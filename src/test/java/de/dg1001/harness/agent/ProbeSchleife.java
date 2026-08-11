@@ -160,6 +160,54 @@ public final class ProbeSchleife {
                    "i1i2i3".equals(ids));
         }
 
+        // ------------------------------------------------------------ Freigabe
+        // Eine Ablehnung muss das Werkzeug wirklich verhindern -- nicht bloss
+        // im Nachhinein bemaengeln. Geprueft wird am Dateisystem, nicht an der
+        // Rueckmeldung: nur die Datei beweist, dass nichts gelaufen ist.
+        {
+            Path marke = tmp.resolve("darf-nicht-entstehen.txt");
+            Files.deleteIfExists(marke);
+            ChatResponse ruftBash = new ChatResponse(
+                    new AssistantMessage(null, null, List.of(new ToolCall("b1", "bash",
+                            "{\"kommando\":\"touch darf-nicht-entstehen.txt\"}"))),
+                    FinishReason.TOOL_CALLS, Usage.LEER);
+            Skript s = new Skript(ruftBash, text("na gut", FinishReason.STOP));
+
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
+                                ContextBudget.vorgabe(65536, 16384), 10, false);
+            a.mitFreigabe(tc -> tc.name().equals("bash") ? "Der Nutzer hat abgelehnt." : null);
+            Agent.Ergebnis e = a.lauf("sys", "tu was");
+
+            pruefe("abgelehntes bash wird nicht ausgefuehrt", !Files.exists(marke));
+            pruefe("Lauf geht nach einer Ablehnung weiter",
+                   e.status() == Agent.Status.FERTIG);
+            pruefe("das Modell erfaehrt den Grund",
+                   s.gesehen.get(1).toString().contains("Der Nutzer hat abgelehnt."));
+        }
+        {
+            // Gegenprobe: ohne Ablehnung laeuft dasselbe Kommando durch.
+            Path marke = tmp.resolve("darf-entstehen.txt");
+            Files.deleteIfExists(marke);
+            ChatResponse ruftBash = new ChatResponse(
+                    new AssistantMessage(null, null, List.of(new ToolCall("b1", "bash",
+                            "{\"kommando\":\"touch darf-entstehen.txt\"}"))),
+                    FinishReason.TOOL_CALLS, Usage.LEER);
+            lauf(new Skript(ruftBash, text("fertig", FinishReason.STOP)), tmp, 10);
+            pruefe("ohne Ablehnung laeuft es durch", Files.exists(marke));
+        }
+        {
+            // Die Freigabe darf nur fragen, wonach sie gefragt wird: read muss
+            // durchlaufen, auch wenn bash abgelehnt wird.
+            Skript s = new Skript(ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  text("fertig", FinishReason.STOP));
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
+                                ContextBudget.vorgabe(65536, 16384), 10, false);
+            a.mitFreigabe(tc -> tc.name().equals("bash") ? "abgelehnt" : null);
+            a.lauf("sys", "lies mal");
+            pruefe("nur bash wird gefragt, read laeuft",
+                   s.gesehen.get(1).toString().contains("inhalt"));
+        }
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");

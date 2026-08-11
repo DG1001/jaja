@@ -65,10 +65,20 @@ public final class Main {
         ChatClient client = new ChatClient(baseUrl, modell, apiKey, maxAusgabe,
                                            Duration.ofMinutes(minuten));
 
-        if (laut) {
+        // Ohne Aufgabe auf der Kommandozeile: Sitzung am Bildschirm. Muss vor
+        // jeder stderr-Ausgabe entschieden werden -- eine einzige Zeile neben
+        // der Oberflaeche her zerschneidet die Statuszeile.
+        boolean amBildschirm = (aufgabe == null || aufgabe.isBlank());
+
+        if (laut && !amBildschirm) {
             System.err.println("[harness] Modell " + modell + " an " + baseUrl);
             System.err.println("[harness] Arbeitsbereich " + ws.wurzel());
             System.err.println("[harness] " + budget.bericht(0));
+        }
+
+        if (amBildschirm) {
+            sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"));
+            return;
         }
 
         // Wiederholung als Huelle. Lokale Server melden unter Last 503 mit der
@@ -76,12 +86,6 @@ public final class Main {
         // geht die Arbeit vieler Zuege verloren.
         Retry endpunkt = Retry.vorgabe(client,
                 m -> { if (laut) System.err.println("[harness] " + m); });
-
-        // Ohne Aufgabe auf der Kommandozeile: Sitzung am Bildschirm.
-        if (aufgabe == null || aufgabe.isBlank()) {
-            sitzung(endpunkt, ws, budget, maxZuege, modell, !o.containsKey("frei"));
-            return;
-        }
 
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget, maxZuege, laut);
 
@@ -106,7 +110,7 @@ public final class Main {
      * schiefgeht — ein im Rohmodus verlassenes Terminal zeigt keine Eingabe
      * mehr an, und der Nutzer haelt das zu Recht fuer einen Absturz.
      */
-    private static void sitzung(ChatEndpunkt endpunkt, Workspace ws, ContextBudget budget,
+    private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
@@ -116,6 +120,10 @@ public final class Main {
         }
         try (term) {
             Anzeige anzeige = new Anzeige(maxZuege);
+            // Die Wiederholung meldet sich hier ueber die Anzeige. Ginge sie
+            // wie im Stapelbetrieb nach stderr, faende sie sich mitten in der
+            // Statuszeile wieder -- gemessen an einem Server, der nicht antwortete.
+            ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget,
                                     maxZuege, anzeige);
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,

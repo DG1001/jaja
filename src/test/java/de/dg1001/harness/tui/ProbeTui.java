@@ -69,6 +69,16 @@ public final class ProbeTui {
                    lies(e, "\033[A\033[A\r").text(), "einmal");
         }
 
+        // ------------------------------------------------- vorbelegte Zeile
+        // Was waehrend eines laufenden Zuges getippt wurde, muss beim naechsten
+        // Prompt dastehen -- und bearbeitbar sein, nicht bloss angezeigt.
+        pruefe("vorbelegter Text steht da", lies(neu("\r"), null, "schon getippt").text(),
+               "schon getippt");
+        pruefe("vorbelegt und weitergetippt",
+               lies(neu("!\r"), null, "schon").text(), "schon!");
+        pruefe("Cursor steht am Ende des Vorbelegten",
+               lies(neu("\177x\r"), null, "abc").text(), "abx");
+
         // --------------------------------------------------------- UTF-8
         pruefe("Umlaut kommt als ein Zeichen an", tippe("gr\u00fcn\r").text(), "grün");
         pruefe("Ruecktaste loescht den ganzen Umlaut", tippe("gr\u00fc\177n\r").text(), "grn");
@@ -146,10 +156,15 @@ public final class ProbeTui {
 
     /** Liest aus dem Editor; Ausgabe wird verworfen. */
     private static Eingabe.Ergebnis lies(Eingabe e, String nachschub) throws IOException {
+        return lies(e, nachschub, "");
+    }
+
+    private static Eingabe.Ergebnis lies(Eingabe e, String nachschub, String vorbelegt)
+            throws IOException {
         if (nachschub != null) e = uebernimm(e, nachschub);
         PrintStream alt = System.out;
         System.setOut(new PrintStream(new ByteArrayOutputStream()));
-        try { return e.lies("› "); }
+        try { return e.lies("› ", vorbelegt); }
         finally { System.setOut(alt); }
     }
 

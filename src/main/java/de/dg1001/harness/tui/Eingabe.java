@@ -37,8 +37,13 @@ public final class Eingabe {
     }
 
     public Ergebnis lies(String eingabeaufforderung) throws IOException {
-        StringBuilder b = new StringBuilder();
-        int cursor = 0;
+        return lies(eingabeaufforderung, "");
+    }
+
+    /** @param vorbelegt was der Nutzer schon getippt hat, waehrend der Agent arbeitete */
+    public Ergebnis lies(String eingabeaufforderung, String vorbelegt) throws IOException {
+        StringBuilder b = new StringBuilder(vorbelegt == null ? "" : vorbelegt);
+        int cursor = b.length();
         int imVerlauf = verlauf.size();     // hinter dem letzten Eintrag
         String angefangen = "";
 

@@ -55,6 +55,9 @@ public final class Sitzung {
     private volatile ToolCall offeneFrage;
     private final SynchronousQueue<Boolean> antwort = new SynchronousQueue<>();
 
+    /** Was waehrend eines laufenden Zuges getippt wurde. */
+    private final StringBuilder vorgetippt = new StringBuilder();
+
     public Sitzung(Agent agent, TokenSchaetzer schaetzer, Anzeige anzeige, InputStream in,
                    Workspace ws, String systemPrompt, String modell, boolean fragen) {
         this.agent        = agent;
@@ -77,7 +80,10 @@ public final class Sitzung {
         kopf();
         try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
             while (true) {
-                Eingabe.Ergebnis e = eingabe.lies("  " + Terminal.CYAN + "› " + Terminal.NORMAL);
+                String schon = vorgetippt.toString();
+                vorgetippt.setLength(0);
+                Eingabe.Ergebnis e = eingabe.lies(
+                        "  " + Terminal.CYAN + "› " + Terminal.NORMAL, schon);
                 if (e.art() == Eingabe.Art.ENDE) { anzeige.zeile("  " + Terminal.GRAU + "tschuess" + Terminal.NORMAL); return; }
                 if (e.art() == Eingabe.Art.LEER) continue;
 
@@ -165,7 +171,18 @@ public final class Sitzung {
             if (c == 3) {
                 agent.brichAb();
                 anzeige.hinweis("Abbruch angefordert — der laufende Zug wird noch beendet");
+                continue;
             }
+
+            // Alles andere ist der naechste Auftrag, schon getippt. Aufheben
+            // statt wegwerfen: waehrend eines Zuges, der Minuten dauert,
+            // tippt man selbstverstaendlich weiter, und stillschweigend
+            // verschluckter Text ist der aergerlichste Fehler einer Eingabe.
+            // Der Wagenruecklauf wird verworfen -- abgeschickt wird bewusst,
+            // nicht durch ein Zeitfenster, das der Nutzer nicht sieht.
+            if (c >= 32) vorgetippt.appendCodePoint(c);
+            else if (c == 127 && vorgetippt.length() > 0)
+                vorgetippt.deleteCharAt(vorgetippt.length() - 1);
         }
     }
 
