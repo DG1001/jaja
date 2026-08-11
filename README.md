@@ -1,7 +1,8 @@
 # jaja — Just Another Java Agent
 
 A small agentic coding harness for **local** LLMs, with an interactive
-terminal session. No dependencies, ~2,900 lines of Java 21, one jar.
+terminal session. No dependencies, ~3,300 lines of Java 21 plus ~1,100
+lines of tests, one jar.
 
 It scores **86 / 86** on the four-task benchmark from
 [local-agentic-coding-128gb](https://github.com/DG1001/local-agentic-coding-128gb)
