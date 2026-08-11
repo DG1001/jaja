@@ -194,6 +194,14 @@ sharp edges that are easy to get wrong and unpleasant to debug:
   other's keystroke — intermittently, and only under load.
 - **`\n` does not return to column 0 in raw mode.** Every line needs `\r\n`.
   Miss it and the output walks diagonally across the screen.
+- **Nothing else may write to the terminal.** The retry notice went to `stderr`
+  in batch mode and, in a session, printed itself into the middle of the status
+  line. It now goes through the display like everything else — which is what
+  the `Beobachter` seam was for, and it was not being used yet.
+- **Keystrokes during a turn are kept, not dropped.** A turn takes minutes on
+  local hardware, so of course you keep typing. The text reappears at the next
+  prompt, ready to edit; the newline is discarded, because sending should be a
+  decision and not a timing accident.
 
 ## Design decisions that came from measurements
 
@@ -232,10 +240,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 168 checks, plus one round trip against a real server:
+Seven offline suites, 176 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 168 checks, no server required
+mvn test              # 176 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -251,8 +259,8 @@ failure, which is all Maven needs.
 | `ProbeRetry` | 9 | which errors are worth retrying |
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 22 | budget, transcript, elision |
-| `ProbeSchleife` | 12 | the loop, against a scripted endpoint |
-| `ProbeTui` | 31 | line editor and display, against a byte stream |
+| `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
+| `ProbeTui` | 34 | line editor and display, against a byte stream |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
