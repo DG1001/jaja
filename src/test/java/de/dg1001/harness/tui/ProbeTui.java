@@ -88,6 +88,20 @@ public final class ProbeTui {
         pruefe("liesZeichen liefert Codepunkte",
                Terminal.liesZeichen(strom("\u00fc")), (int) 'ü');
 
+        // ----------------------------------------------------- Freigabetasten
+        // Vorher galt jede Taste ausser 'j' als Ablehnung. Wer waehrend eines
+        // langen Zuges weitertippte, lehnte damit unbemerkt Kommandos ab --
+        // gemessen an einem '/', dem ersten Zeichen von "/ende".
+        pruefe("j fuehrt aus",        Sitzung.freigabeAntwort('j'), Boolean.TRUE);
+        pruefe("n lehnt ab",          Sitzung.freigabeAntwort('n'), Boolean.FALSE);
+        pruefe("Ctrl-C lehnt ab",     Sitzung.freigabeAntwort(3),   Boolean.FALSE);
+        pruefe("Eingabetaste ist keine Zustimmung",
+               Sitzung.freigabeAntwort('\r'), null);
+        pruefe("Schraegstrich ist keine Antwort", Sitzung.freigabeAntwort('/'), null);
+        pruefe("Buchstabe eines Auftrags ist keine Antwort",
+               Sitzung.freigabeAntwort('e'), null);
+        pruefe("Leertaste ist keine Antwort", Sitzung.freigabeAntwort(' '), null);
+
         // ------------------------------------------------------------ Anzeige
         pruefe("Werkzeugzeile nennt Name und Argument",
                gezeichnet(a -> a.werkzeugFertig(

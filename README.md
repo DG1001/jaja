@@ -180,6 +180,13 @@ permissions; in a benchmark that is fine because the directory is disposable, at
 a terminal it is not. A refusal is not an error — the model gets a tool result
 explaining it and can pick another route. `--frei` or `/frei` turns it off.
 
+Only `j` and `n` answer the question; every other key is ignored and the prompt
+stays. That is not fussiness — the first version treated anything but `j` as a
+refusal, so typing your next prompt while a turn ran silently refused whatever
+came up. It showed up in a live session as a `/` — the first character of
+`/ende` — cancelling a command nobody meant to cancel. `Enter` means nothing
+either: agreeing to start a shell should be explicit.
+
 ### Three things the terminal handling has to get right
 
 Raw mode via `stty` is the price of not depending on JLine, and it comes with
@@ -240,10 +247,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 176 checks, plus one round trip against a real server:
+Seven offline suites, 183 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 176 checks, no server required
+mvn test              # 183 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -260,7 +267,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 22 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 34 | line editor and display, against a byte stream |
+| `ProbeTui` | 41 | line editor, display and approval keys, against a byte stream |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:

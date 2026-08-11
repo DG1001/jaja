@@ -161,10 +161,9 @@ public final class Sitzung {
             }
             int c = Terminal.liesZeichen(in);
 
-            ToolCall frage = offeneFrage;
-            if (frage != null) {
-                if (c == 'j' || c == 'J' || c == '\r' || c == '\n') gib(true);
-                else if (c == 'n' || c == 'N' || c == 3)            gib(false);
+            if (offeneFrage != null) {
+                Boolean a = freigabeAntwort(c);
+                if (a != null) gib(a);
                 continue;
             }
 
@@ -186,6 +185,28 @@ public final class Sitzung {
         }
     }
 
+    /**
+     * Deutet einen Tastendruck als Antwort auf eine Freigabefrage.
+     *
+     * <p>Nur {@code j} und {@code n} zaehlen; alles andere wird ignoriert und
+     * die Frage bleibt stehen. Das klingt kleinlich, ist aber der Unterschied
+     * zwischen einer Frage und einer Falle: vorher galt jede Taste ausser
+     * {@code j} als Ablehnung, und wer waehrend eines langen Zuges seinen
+     * naechsten Auftrag tippte, lehnte damit unbemerkt ein Kommando ab.
+     * Beobachtet an einem {@code /} — dem ersten Zeichen von {@code /ende}.
+     *
+     * <p>Auch die Eingabetaste bedeutet <em>nichts</em>. Eine Vorgabe per
+     * Enter waere bequem, aber bei einer Frage, die eine Shell startet, soll
+     * die Zustimmung ausdruecklich sein.
+     *
+     * @return TRUE ausfuehren, FALSE ablehnen, null keine Antwort
+     */
+    static Boolean freigabeAntwort(int c) {
+        if (c == 'j' || c == 'J' || c == 'y' || c == 'Y') return Boolean.TRUE;
+        if (c == 'n' || c == 'N' || c == 3)               return Boolean.FALSE;
+        return null;
+    }
+
     private void gib(boolean ja) {
         try { antwort.put(ja); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
@@ -202,7 +223,7 @@ public final class Sitzung {
                 String kommando = kommando(tc);
                 anzeige.zeile("");
                 anzeige.zeile("  " + Terminal.GELB + "bash?" + Terminal.NORMAL + "  " + kommando);
-                anzeige.zeile("  " + Terminal.GRAU + "  [j] ausfuehren   [n] ablehnen" + Terminal.NORMAL);
+                anzeige.zeile("  " + Terminal.GRAU + "  [j] ausfuehren   [n] ablehnen   (andere Tasten: keine Antwort)" + Terminal.NORMAL);
 
                 offeneFrage = tc;
                 boolean ja;
