@@ -1,7 +1,7 @@
 # jaja — Just Another Java Agent
 
-A small agentic coding harness for **local** LLMs. No dependencies, ~2,300
-lines of Java 21, one jar.
+A small agentic coding harness for **local** LLMs, with an interactive
+terminal session. No dependencies, ~2,900 lines of Java 21, one jar.
 
 It scores **86 / 86** on the four-task benchmark from
 [local-agentic-coding-128gb](https://github.com/DG1001/local-agentic-coding-128gb)
@@ -51,6 +51,11 @@ calling).
 
 ```bash
 mvn package
+
+# Interactive session (no --prompt):
+java -jar target/jaja-0.1.0.jar --model deepseek-v4-flash --cwd ~/my-project
+
+# One-shot, for scripts and benchmarks:
 java -jar target/jaja-0.1.0.jar \
     --model deepseek-v4-flash \
     --base-url http://127.0.0.1:8888/v1 \
@@ -79,6 +84,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--max-turns <n>` | `60` | |
 | `--timeout-minutes <n>` | `25` | per request; local models are slow |
 | `--leise` | off | suppress progress output |
+| `--frei` | off | session: run `bash` without asking |
 
 Exit code is `0` only on an orderly finish.
 
@@ -89,13 +95,20 @@ turn back, run the tools it asks for, append the results, repeat until the
 model answers without calling a tool.
 
 ```
-Main ──> Agent ──┬──> ChatEndpunkt ──> Retry ──> ChatClient ──> /v1/chat/completions
-                 │                                    ▲
-                 │                                    └── Json + Messages
-                 ├──> ToolRegistry ──> glob grep read write edit bash
-                 │                          └──> Workspace (path confinement)
-                 └──> Transcript + Elision + ContextBudget + TokenSchaetzer
+Main ──┬──> Sitzung ──> Anzeige + Eingabe + Terminal        (interactive)
+       │       │
+       └───────┴──> Agent ──┬──> ChatEndpunkt ──> Retry ──> ChatClient ──> /v1
+                            │                          └── Json + Messages
+                            ├──> ToolRegistry ──> glob grep read write edit bash
+                            │           │              └──> Workspace (confinement)
+                            │           └──> Freigabe   (ask before bash)
+                            ├──> Beobachter             (progress: stderr or Anzeige)
+                            └──> Transcript + Elision + ContextBudget + TokenSchaetzer
 ```
+
+`Beobachter` and `Freigabe` are the two seams the session needed: the loop does
+not know whether its progress goes to a log or a screen, and it does not know
+who — if anyone — approves a command.
 
 | Package | |
 |---|---|
@@ -103,6 +116,7 @@ Main ──> Agent ──┬──> ChatEndpunkt ──> Retry ──> ChatClien
 | `tools` | the six tools, `ToolRegistry`, `Spill` (oversized output handling) |
 | `ws` | `Workspace` — every path resolves through it, or not at all |
 | `agent` | `Agent`, `Transcript`, `Elision`, `ContextBudget`, `TokenSchaetzer` |
+| `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung` |
 
 ### The six tools
 
@@ -118,6 +132,67 @@ away for tidiness.
 than once, nothing is changed and the model is told why. A silent multi-match
 is the most expensive failure in this class of tool — it surfaces only at test
 time, and by then the model is looking in the wrong place.
+
+## The session
+
+Started without `--prompt`, jaja opens an interactive session. Deliberately
+**not** a full-screen application: everything except the status line is
+ordinary output, so it stays in the terminal's scrollback, and selecting and
+copying still works.
+
+```
+  jaja · deepseek-v4-flash · /home/you/my-project
+  bash fragt nach · /hilfe zeigt die Befehle
+
+  › fix the failing test in tests/test_cart.py
+
+  ⏺ glob    **/test_*.py                    3 Zeilen
+  ⏺ read    tests/test_cart.py              41 Zeilen
+  ⏺ edit    src/cart.py                     geaendert: src/cart.py (1 Stelle)
+
+  bash?  .venv/bin/python -m pytest -q
+    [j] ausfuehren   [n] ablehnen
+    ausgefuehrt
+  ⏺ bash    .venv/bin/python -m pytest -q   12 passed
+
+  Der Fehler lag in rabatt(): bei Menge 0 wurde durch null geteilt.
+
+  6 Zuege · 4 Werkzeugaufrufe · 8214 Token im Verlauf
+  › _
+```
+
+| | |
+|---|---|
+| `Ctrl-C` | abort the running turn — the session and the transcript survive |
+| `Ctrl-D` | quit |
+| `↑` `↓` | previous prompts |
+| `/neu` | drop the transcript and start over |
+| `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
+| `/frei` | toggle asking before `bash` |
+| `/verlauf` | transcript size and current token estimate |
+
+Follow-up questions reuse the same `Transcript`, elided results included. That
+is the whole difference between an agent and a script with colours.
+
+**`bash` asks before it runs.** It executes whatever the model writes, with your
+permissions; in a benchmark that is fine because the directory is disposable, at
+a terminal it is not. A refusal is not an error — the model gets a tool result
+explaining it and can pick another route. `--frei` or `/frei` turns it off.
+
+### Three things the terminal handling has to get right
+
+Raw mode via `stty` is the price of not depending on JLine, and it comes with
+sharp edges that are easy to get wrong and unpleasant to debug:
+
+- **Restore the terminal, always.** A process that exits in raw mode leaves a
+  terminal that no longer echoes what you type, which every user reasonably
+  reads as a crash. Hence both `try`-with-resources *and* a shutdown hook.
+- **Only one thread may read the keyboard.** While the agent works it runs on
+  its own thread, and the main thread polls the keyboard for `Ctrl-C` and for
+  approvals. If the tool thread read as well, one of them would swallow the
+  other's keystroke — intermittently, and only under load.
+- **`\n` does not return to column 0 in raw mode.** Every line needs `\r\n`.
+  Miss it and the output walks diagonally across the screen.
 
 ## Design decisions that came from measurements
 
@@ -156,15 +231,15 @@ that particular sentence got written.)
 
 ## Tests
 
-Six offline suites, 137 checks, plus one round trip against a real server:
+Seven offline suites, 168 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 137 checks, no server required
+mvn test              # 168 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
 They are plain `main()` methods rather than JUnit — the project has no
-dependencies and rewriting ~850 lines of working checks to gain a test runner
+dependencies and rewriting ~1,100 lines of working checks to gain a test runner
 was not a good trade. `exec-maven-plugin` runs them; each exits non-zero on
 failure, which is all Maven needs.
 
@@ -176,6 +251,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 22 | budget, transcript, elision |
 | `ProbeSchleife` | 12 | the loop, against a scripted endpoint |
+| `ProbeTui` | 31 | line editor and display, against a byte stream |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
@@ -205,9 +281,10 @@ sequence of responses — including the stalled turn that takes 17 minutes and a
 - **Not measured beyond one model on one benchmark.** 86/86 with
   DeepSeek-V4-Flash on four Python tasks in small repositories, one run. It
   says nothing about other models, large codebases, or ambiguous requirements.
-- **No subagents, no MCP, no permission prompts, no streaming, no session
-  resume.** `bash` runs whatever the model asks for, inside the workspace. Do
-  not point it at anything you would not hand to a stranger with a shell.
+- **No subagents, no MCP, no streaming, no diff view, no file watching.**
+  `bash` asks before it runs and stays inside the workspace, but a `j` is still
+  a shell command executed with your permissions. Do not point it at anything
+  you would not hand to a stranger with a shell.
 
 ## A note on the German
 
@@ -228,7 +305,8 @@ src/main/java/de/dg1001/harness/
   tools/                 the six tools, registry, spilling
   ws/Workspace.java      path confinement
   agent/                 loop, transcript, elision, budget, estimator
-src/test/java/…          six probe suites
+  tui/                   terminal, line editor, display, session
+src/test/java/…          seven probe suites
 pom.xml                  Maven; no dependencies
 ```
 

@@ -55,14 +55,14 @@
       </plugin>
 
       <!--
-        The test suites are plain main() methods, not JUnit. Rewriting ~400
+        The test suites are plain main() methods, not JUnit. Rewriting ~1,100
         lines of working checks to gain a test runner was not worth a
         dependency, so exec-maven-plugin runs them instead. Each one exits
         non-zero on failure, which is all Maven needs to fail the build.
 
-        Only the three offline suites are bound here. The round-trip check
-        against a real model server lives in the "live" profile below,
-        because `mvn test` must not require a 90 GB model to be loaded.
+        Only the offline suites are bound here. The round-trip check against a
+        real model server lives in the "live" profile below, because
+        `mvn test` must not require a 90 GB model to be loaded.
       -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -94,6 +94,10 @@
           <execution>
             <id>probe-schleife</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.agent.ProbeSchleife</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-tui</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.tui.ProbeTui</mainClass></configuration>
           </execution>
         </executions>
         <configuration>

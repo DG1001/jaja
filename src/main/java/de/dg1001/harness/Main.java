@@ -3,7 +3,11 @@ package de.dg1001.harness;
 import de.dg1001.harness.agent.Agent;
 import de.dg1001.harness.agent.ContextBudget;
 import de.dg1001.harness.tools.ToolRegistry;
+import de.dg1001.harness.tui.Anzeige;
+import de.dg1001.harness.tui.Sitzung;
+import de.dg1001.harness.tui.Terminal;
 import de.dg1001.harness.wire.ChatClient;
+import de.dg1001.harness.wire.ChatEndpunkt;
 import de.dg1001.harness.wire.Retry;
 import de.dg1001.harness.ws.Workspace;
 
@@ -55,9 +59,6 @@ public final class Main {
         String aufgabe = o.containsKey("prompt-file")
                 ? Files.readString(Path.of(o.get("prompt-file")))
                 : o.get("prompt");
-        if (aufgabe == null || aufgabe.isBlank()) {
-            System.err.println("--prompt oder --prompt-file fehlt"); System.exit(2);
-        }
 
         Workspace ws = new Workspace(cwd);
         ContextBudget budget = ContextBudget.vorgabe(fenster, maxAusgabe);
@@ -76,6 +77,12 @@ public final class Main {
         Retry endpunkt = Retry.vorgabe(client,
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
+        // Ohne Aufgabe auf der Kommandozeile: Sitzung am Bildschirm.
+        if (aufgabe == null || aufgabe.isBlank()) {
+            sitzung(endpunkt, ws, budget, maxZuege, modell, !o.containsKey("frei"));
+            return;
+        }
+
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget, maxZuege, laut);
 
         long t0 = System.nanoTime();
@@ -90,6 +97,30 @@ public final class Main {
         // Rueckgabewert: 0 nur bei ordentlichem Abschluss. Wichtig fuer den
         // Pruefstand -- ein "fertig", das nichts getan hat, soll auffallen.
         System.exit(e.erfolgreich() ? 0 : 1);
+    }
+
+    /**
+     * Der Sitzungsbetrieb.
+     *
+     * <p>Das Terminal muss unbedingt zurueckgesetzt werden, auch wenn etwas
+     * schiefgeht — ein im Rohmodus verlassenes Terminal zeigt keine Eingabe
+     * mehr an, und der Nutzer haelt das zu Recht fuer einen Absturz.
+     */
+    private static void sitzung(ChatEndpunkt endpunkt, Workspace ws, ContextBudget budget,
+                                int maxZuege, String modell, boolean fragen) throws Exception {
+        Terminal term = Terminal.oeffne();
+        if (term == null) {
+            System.err.println("--prompt oder --prompt-file fehlt "
+                             + "(und dies ist kein Terminal, also keine Sitzung moeglich)");
+            System.exit(2);
+        }
+        try (term) {
+            Anzeige anzeige = new Anzeige(maxZuege);
+            Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget,
+                                    maxZuege, anzeige);
+            new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
+                        ws, SYSTEM_PROMPT, modell, fragen).lauf();
+        }
     }
 
     private static Map<String, String> argumente(String[] args) {
@@ -126,6 +157,9 @@ public final class Main {
               --max-turns <n>           Vorgabe 60
               --timeout-minutes <n>     je Anfrage, Vorgabe 25
               --leise                   keine Fortschrittsmeldungen
+              --frei                    Sitzung: bash ohne Nachfrage ausfuehren
+
+            Ohne --prompt/--prompt-file startet eine Sitzung am Bildschirm.
 
             Rueckgabewert 0 nur bei ordentlichem Abschluss.""");
     }

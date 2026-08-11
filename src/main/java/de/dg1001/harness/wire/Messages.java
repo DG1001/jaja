@@ -1,5 +1,6 @@
 package de.dg1001.harness.wire;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -125,6 +126,53 @@ public final class Messages {
         w.objektZu();
     }
 
+    /**
+     * Ganze Nachrichtenliste als JSON — fuer gespeicherte Sitzungen.
+     *
+     * <p>Bewusst dasselbe Format wie in der Anfrage: eine gespeicherte Sitzung
+     * ist damit lesbar und man sieht sofort, was das Modell zu sehen bekaeme.
+     * Denkbloecke fehlen darin, weil sie auch in der Anfrage fehlen.
+     */
+    public static String schreibeListe(List<Message> nachrichten) {
+        Json.Writer w = new Json.Writer();
+        w.listeAuf();
+        for (Message m : nachrichten) schreibe(w, m);
+        w.listeZu();
+        return w.toString();
+    }
+
+    public static List<Message> lieseListe(String json) {
+        List<Message> aus = new ArrayList<>();
+        for (Object o : Json.arr(Json.parse(json))) {
+            String rolle  = Json.str(Json.feld(o, "role"));
+            String inhalt = Json.str(Json.feld(o, "content"));
+            switch (rolle == null ? "" : rolle) {
+                case "system"    -> aus.add(new SystemMessage(inhalt));
+                case "user"      -> aus.add(new UserMessage(inhalt));
+                case "tool"      -> aus.add(new ToolMessage(
+                                        Json.str(Json.feld(o, "tool_call_id")), inhalt));
+                case "assistant" -> aus.add(new AssistantMessage(
+                                        inhalt, null, werkzeugaufrufe(o)));
+                default -> { }   // unbekannte Rolle: ueberspringen
+            }
+        }
+        return aus;
+    }
+
+    /** Liest {@code tool_calls} aus einer Nachricht. */
+    private static List<ToolCall> werkzeugaufrufe(Object nachricht) {
+        List<ToolCall> aufrufe = new ArrayList<>();
+        for (Object o : Json.arr(Json.feld(nachricht, "tool_calls"))) {
+            Object fn = Json.feld(o, "function");
+            String args = Json.str(Json.feld(fn, "arguments"));
+            aufrufe.add(new ToolCall(
+                    Json.str(Json.feld(o, "id")),
+                    Json.str(Json.feld(fn, "name")),
+                    args == null ? "{}" : args));
+        }
+        return aufrufe;
+    }
+
     // --------------------------------------------------------- lesen
 
     static ChatResponse lies(Object wurzel) {
@@ -141,15 +189,7 @@ public final class Messages {
         String denken = Json.str(Json.feld(msg, "reasoning_content"));
         if (denken == null) denken = Json.str(Json.feld(msg, "reasoning"));
 
-        List<ToolCall> aufrufe = new java.util.ArrayList<>();
-        for (Object o : Json.arr(Json.feld(msg, "tool_calls"))) {
-            Object fn = Json.feld(o, "function");
-            String args = Json.str(Json.feld(fn, "arguments"));
-            aufrufe.add(new ToolCall(
-                    Json.str(Json.feld(o, "id")),
-                    Json.str(Json.feld(fn, "name")),
-                    args == null ? "{}" : args));
-        }
+        List<ToolCall> aufrufe = werkzeugaufrufe(msg);
 
         FinishReason grund = FinishReason.von(Json.str(Json.feld(c0, "finish_reason")));
 

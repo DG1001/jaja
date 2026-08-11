@@ -53,6 +53,10 @@ public final class Retry implements ChatEndpunkt {
                 return innen.complete(verlauf, werkzeuge);
             } catch (ChatClient.ChatFehler e) {
                 letzter = e;
+                // Ein unterbrochener Faden will abbrechen, nicht warten.
+                // (Der Schlaf unten wuerfe zwar auch, aber sich darauf zu
+                // verlassen macht die Absicht unlesbar.)
+                if (Thread.currentThread().isInterrupted()) throw e;
                 if (!lohntWiederholung(e) || versuch == versuche) throw e;
 
                 long warten = grundWartezeitMs * (1L << (versuch - 1));
