@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>de.dg1001</groupId>
+  <artifactId>jaja</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>jaja</name>
+  <description>Just Another Java Agent — a small agentic coding harness for local LLMs</description>
+
+  <!--
+    No dependencies. Not as an achievement, but because none were needed:
+    java.net.http covers the transport, and the JSON reader is 257 lines.
+    Adding Jackson would have meant more build weight than code saved.
+  -->
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <plugins>
+
+      <!--
+        Pinned deliberately. Maven 3.8's default compiler plugin is 3.1, which
+        predates the `release` property and falls back to source/target 5.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>21</release>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>de.dg1001.harness.Main</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <!--
+        The test suites are plain main() methods, not JUnit. Rewriting ~400
+        lines of working checks to gain a test runner was not worth a
+        dependency, so exec-maven-plugin runs them instead. Each one exits
+        non-zero on failure, which is all Maven needs to fail the build.
+
+        Only the three offline suites are bound here. The round-trip check
+        against a real model server lives in the "live" profile below,
+        because `mvn test` must not require a 90 GB model to be loaded.
+      -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.0</version>
+        <!-- Von unten nach oben, damit der erste Fehlschlag die tiefste
+             Ursache nennt und nicht ihre Auswirkung drei Schichten weiter. -->
+        <executions>
+          <execution>
+            <id>probe-json</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.wire.ProbeJson</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-messages</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.wire.ProbeMessages</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-retry</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.wire.ProbeRetry</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-tools</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.tools.ProbeTools</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-agent</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.agent.ProbeAgent</mainClass></configuration>
+          </execution>
+          <execution>
+            <id>probe-schleife</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.agent.ProbeSchleife</mainClass></configuration>
+          </execution>
+        </executions>
+        <configuration>
+          <classpathScope>test</classpathScope>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- mvn test -Plive : additionally talks to a real model server. -->
+    <profile>
+      <id>live</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>probe-wire</id><phase>test</phase><goals><goal>java</goal></goals>
+                <configuration>
+                  <mainClass>de.dg1001.harness.wire.Probe</mainClass>
+                  <classpathScope>test</classpathScope>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+</project>
