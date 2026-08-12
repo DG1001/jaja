@@ -1,8 +1,8 @@
 # jaja — Just Another Java Agent
 
 A small agentic coding harness for **local** LLMs, with an interactive
-terminal session. No dependencies, ~3,600 lines of Java 21 plus ~1,200
-lines of tests, one jar.
+terminal session. Java 21, no dependencies, one jar — small enough to read
+through in an evening.
 
 It scores **86 / 86** on the four-task benchmark from
 [local-agentic-coding-128gb](https://github.com/DG1001/local-agentic-coding-128gb)
@@ -113,7 +113,7 @@ who — if anyone — approves a command.
 
 | Package | |
 |---|---|
-| `wire` | `Json` (a 257-line reader/writer), `Messages`, `ChatClient`, `Retry` |
+| `wire` | `Json` (a hand-rolled reader/writer), `Messages`, `ChatClient`, `Retry` |
 | `tools` | the six tools, `ToolRegistry`, `Spill` (oversized output handling) |
 | `ws` | `Workspace` — every path resolves through it, or not at all |
 | `agent` | `Agent`, `Transcript`, `Elision`, `ContextBudget`, `TokenSchaetzer` |
@@ -313,28 +313,29 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 211 checks, plus one round trip against a real server:
+Seven offline suites, roughly two hundred checks, plus one round trip against
+a real server:
 
 ```bash
-mvn test              # 211 checks, no server required
+mvn test              # all offline suites, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
 They are plain `main()` methods rather than JUnit — the project has no
-dependencies and rewriting ~1,100 lines of working checks to gain a test runner
-was not a good trade. `exec-maven-plugin` runs them; each exits non-zero on
+dependencies, and rewriting a working set of checks to gain a test runner was
+not a good trade. `exec-maven-plugin` runs them; each exits non-zero on
 failure, which is all Maven needs.
 
-| Suite | Checks | |
-|---|---|---|
-| `ProbeJson` | 39 | parser, writer, escapes, malformed input |
-| `ProbeMessages` | 23 | the protocol details that fail silently |
-| `ProbeRetry` | 9 | which errors are worth retrying |
-| `ProbeTools` | 32 | all six tools, path confinement, spilling |
-| `ProbeAgent` | 32 | budget, transcript, elision |
-| `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 59 | line editor, display, approval keys, handover prompt |
-| `Probe` (live) | 1 | round trip to a real server |
+| Suite | |
+|---|---|
+| `ProbeJson` | parser, writer, escapes, malformed input |
+| `ProbeMessages` | the protocol details that fail silently |
+| `ProbeRetry` | which errors are worth retrying |
+| `ProbeTools` | all six tools, path confinement, spilling |
+| `ProbeAgent` | budget, transcript, elision |
+| `ProbeSchleife` | the loop and approvals, against a scripted endpoint |
+| `ProbeTui` | line editor, display, approval keys, handover prompt |
+| `Probe` (live) | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
 

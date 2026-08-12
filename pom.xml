@@ -16,8 +16,8 @@
 
   <!--
     No dependencies. Not as an achievement, but because none were needed:
-    java.net.http covers the transport, and the JSON reader is 257 lines.
-    Adding Jackson would have meant more build weight than code saved.
+    java.net.http covers the transport, and the JSON reader is a couple of
+    hundred lines. Jackson would have meant more build weight than code saved.
   -->
 
   <properties>
@@ -55,8 +55,8 @@
       </plugin>
 
       <!--
-        The test suites are plain main() methods, not JUnit. Rewriting ~1,100
-        lines of working checks to gain a test runner was not worth a
+        The test suites are plain main() methods, not JUnit. Rewriting a
+        working set of checks to gain a test runner was not worth a
         dependency, so exec-maven-plugin runs them instead. Each one exits
         non-zero on failure, which is all Maven needs to fail the build.
 
