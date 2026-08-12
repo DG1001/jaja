@@ -99,6 +99,10 @@
             <id>probe-tui</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.tui.ProbeTui</mainClass></configuration>
           </execution>
+          <execution>
+            <id>probe-markdown</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.tui.ProbeMarkdown</mainClass></configuration>
+          </execution>
         </executions>
         <configuration>
           <classpathScope>test</classpathScope>

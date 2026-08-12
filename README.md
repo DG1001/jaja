@@ -117,7 +117,7 @@ who — if anyone — approves a command.
 | `tools` | the six tools, `ToolRegistry`, `Spill` (oversized output handling) |
 | `ws` | `Workspace` — every path resolves through it, or not at all |
 | `agent` | `Agent`, `Transcript`, `Elision`, `ContextBudget`, `TokenSchaetzer` |
-| `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung` |
+| `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung`, `Markdown` |
 
 ### The six tools
 
@@ -169,6 +169,7 @@ copying still works.
 | `Ctrl-F` | switch asking on or off **while a turn is running** |
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
+| `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
@@ -335,6 +336,7 @@ failure, which is all Maven needs.
 | `ProbeAgent` | budget, transcript, elision |
 | `ProbeSchleife` | the loop and approvals, against a scripted endpoint |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
+| `ProbeMarkdown` | headings, lists, tables, code fences, wrapping |
 | `Probe` (live) | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
@@ -355,6 +357,28 @@ Three bugs that only a test caught, all invisible in normal operation:
 so `Retry` can wrap `ChatClient`, and that same seam lets a test script any
 sequence of responses — including the stalled turn that takes 17 minutes and a
 90 GB model to reproduce for real.
+
+## Reading what it wrote
+
+The agent produces a lot of markdown — handovers, READMEs, notes — and `cat`
+shows you the source. `bin/md` typesets it instead:
+
+```bash
+./bin/md NOTIZEN.md
+./bin/md --farbe README.md | less -R     # less needs -R for colour
+```
+
+Inside a session, `/zeige` does the same without leaving it.
+
+It covers headings, lists, block quotes, links, emphasis, fenced code and — the
+part that earns its keep — **tables with aligned columns**, because a markdown
+table in source form is almost never aligned and that is exactly when it stops
+being readable. Wrapping counts visible characters only, so emphasis does not
+make a line break early.
+
+Not a spec-complete renderer: no nested emphasis, footnotes, HTML or images.
+For those use `glow` or `bat`. This one costs no install and no dependency, and
+it knows the terminal width it is already running in.
 
 ## What this is not
 
@@ -382,6 +406,7 @@ README are the map.
 ## Layout
 
 ```
+bin/md                   read a markdown file in the terminal
 src/main/java/de/dg1001/harness/
   Main.java              CLI, system prompt, wiring
   wire/                  transport: Json, Messages, ChatClient, Retry

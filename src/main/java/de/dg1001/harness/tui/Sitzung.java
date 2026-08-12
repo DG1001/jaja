@@ -449,6 +449,8 @@ public final class Sitzung {
                 else uebergabe(exec);
             }
 
+            case "/zeige", "/lies" -> zeige(rest);
+
             case "/speichern" -> speichern(rest);
             case "/laden"     -> laden(rest);
 
@@ -470,6 +472,7 @@ public final class Sitzung {
             "/zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) sichern, frisch weiter",
             "/speichern [n]       Sitzung nach .harness/sitzung-<n>.json schreiben",
             "/laden [n]           gespeicherte Sitzung zurueckholen",
+            "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
             "/frei                bash ohne Nachfrage ausfuehren",
             "/fragen              vor bash wieder nachfragen",
             "/verlauf             Groesse des Verlaufs",
@@ -483,6 +486,27 @@ public final class Sitzung {
         };
         for (String z : zeilen)
             anzeige.zeile(z.isEmpty() ? "" : "  " + Terminal.GRAU + z + Terminal.NORMAL);
+    }
+
+    /** Zeigt eine Datei aus dem Arbeitsbereich; Markdown wird gesetzt. */
+    private void zeige(String name) {
+        if (name == null || name.isBlank()) name = notizdatei;
+        try {
+            Path p = ws.pruefeVorhandenen(ws.aufloesen(name.trim()));
+            if (!Files.exists(p)) {
+                anzeige.zeile("  " + Terminal.ROT + "gibt es nicht: " + name + Terminal.NORMAL);
+                return;
+            }
+            String text = Files.readString(p);
+            anzeige.leerzeile();
+            anzeige.zeile(name.trim().toLowerCase().endsWith(".md")
+                    ? new Markdown(Terminal.breite() - 4).setze(text)
+                    : text);
+            anzeige.leerzeile();
+        } catch (IOException | RuntimeException e) {   // AusbruchFehler ist eine RuntimeException
+            anzeige.zeile("  " + Terminal.ROT + "kann " + name + " nicht zeigen: "
+                          + e.getMessage() + Terminal.NORMAL);
+        }
     }
 
     // ------------------------------------------------------- speichern / laden

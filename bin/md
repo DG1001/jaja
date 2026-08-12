@@ -1,0 +1,16 @@
+#!/bin/sh
+# Markdown im Terminal lesbar setzen.
+#
+#   md NOTIZEN.md
+#   md --farbe README.md | less -R      (less braucht -R fuer Farben)
+#
+# Liegt hier und nicht in ~/.local/bin, damit es mit dem Jar zusammenbleibt.
+# Zum Verlinken:  ln -s "$PWD/bin/md" ~/.local/bin/md
+set -e
+VERZ=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+JAR=$(ls "$VERZ"/target/jaja-*.jar 2>/dev/null | head -1)
+if [ -z "$JAR" ]; then
+    echo "kein Jar in $VERZ/target — erst 'mvn package'" >&2
+    exit 1
+fi
+exec java -cp "$JAR" de.dg1001.harness.tui.Markdown "$@"
