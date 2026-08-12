@@ -187,6 +187,19 @@ public final class ProbeTui {
                gezeichnet(a -> a.zeile("text")),
                t -> t.startsWith(Terminal.ZEILE_LOESCHEN));
 
+        // Mehrzeiliger Text muss je Zeile zurueckspringen. Ohne das laeuft die
+        // Ausgabe treppenfoermig nach rechts aus dem Bild -- so gesehen bei
+        // /hilfe, das den ganzen Block in einem Aufruf schickte.
+        pruefe("mehrzeiliger Text bekommt ueberall Wagenruecklauf",
+               gezeichnet(a -> a.zeile("eins\nzwei\ndrei")),
+               t -> t.contains("eins\r\n") && t.contains("zwei\r\n") && t.contains("drei\r\n"));
+        pruefe("mehrzeilig: kein nacktes \\n bleibt uebrig",
+               gezeichnet(a -> a.zeile("eins\nzwei")),
+               t -> !t.replace("\r\n", "").contains("\n"));
+        pruefe("mehrzeilig: jede Zeile loescht die Statuszeile",
+               gezeichnet(a -> a.zeile("eins\nzwei")),
+               t -> t.split("eins")[1].startsWith("\r\n" + Terminal.ZEILE_LOESCHEN));
+
         pruefe("Rohmodus braucht Wagenruecklauf",
                gezeichnet(a -> a.zeile("text")), t -> t.endsWith("\r\n"));
 

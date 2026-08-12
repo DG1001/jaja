@@ -250,7 +250,10 @@ sharp edges that are easy to get wrong and unpleasant to debug:
   approvals. If the tool thread read as well, one of them would swallow the
   other's keystroke — intermittently, and only under load.
 - **`\n` does not return to column 0 in raw mode.** Every line needs `\r\n`.
-  Miss it and the output walks diagonally across the screen.
+  Miss it and the output walks diagonally across the screen. Do the splitting inside the
+  display, not at the call sites: the help text was written as one multi-line
+  string months after this rule was noted down, and marched off the right edge
+  of the screen exactly as described.
 - **Nothing else may write to the terminal.** The retry notice went to `stderr`
   in batch mode and, in a session, printed itself into the middle of the status
   line. It now goes through the display like everything else — which is what
@@ -310,10 +313,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 208 checks, plus one round trip against a real server:
+Seven offline suites, 211 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 208 checks, no server required
+mvn test              # 211 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -330,7 +333,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 32 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 56 | line editor, display, approval keys, handover prompt |
+| `ProbeTui` | 59 | line editor, display, approval keys, handover prompt |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:

@@ -465,18 +465,24 @@ public final class Sitzung {
     }
 
     private void hilfe() {
-        anzeige.zeile("  " + Terminal.GRAU + """
-                /neu             Verlauf verwerfen und neu anfangen
-                  /zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) und frisch weiter
-                  /speichern [n]   Sitzung nach .harness/sitzung-<n>.json schreiben
-                  /laden [n]       gespeicherte Sitzung zurueckholen
-                  /frei            bash ohne Nachfrage ausfuehren
-                  /fragen          vor bash wieder nachfragen
-                  /verlauf         Groesse des Verlaufs
-                  /ende            Schluss (auch Ctrl-D)
-                  Ctrl-C           laufenden Zug abbrechen, Sitzung bleibt
-                  Ctrl-F           waehrend eines Laufs zwischen frei und fragen wechseln""".stripIndent()
-                + Terminal.NORMAL);
+        String[] zeilen = {
+            "/neu                 Verlauf verwerfen und neu anfangen",
+            "/zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) sichern, frisch weiter",
+            "/speichern [n]       Sitzung nach .harness/sitzung-<n>.json schreiben",
+            "/laden [n]           gespeicherte Sitzung zurueckholen",
+            "/frei                bash ohne Nachfrage ausfuehren",
+            "/fragen              vor bash wieder nachfragen",
+            "/verlauf             Groesse des Verlaufs",
+            "/ende                Schluss (auch Ctrl-D)",
+            "",
+            "waehrend ein Zug laeuft:",
+            "Ctrl-C               Zug abbrechen, Sitzung und Verlauf bleiben",
+            "Ctrl-F               zwischen frei und fragen wechseln",
+            "",
+            "bei einer bash-Frage:  [j] ausfuehren  [n] ablehnen  [f] nicht mehr fragen",
+        };
+        for (String z : zeilen)
+            anzeige.zeile(z.isEmpty() ? "" : "  " + Terminal.GRAU + z + Terminal.NORMAL);
     }
 
     // ------------------------------------------------------- speichern / laden

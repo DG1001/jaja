@@ -43,12 +43,30 @@ public final class Anzeige implements Beobachter {
 
     // ------------------------------------------------------ gewoehnliche Ausgabe
 
-    /** Schreibt eine Zeile, ohne die Statuszeile zu zerstoeren. */
+    /**
+     * Schreibt Text, ohne die Statuszeile zu zerstoeren.
+     *
+     * <p>Mehrzeiliges wird hier aufgeteilt, nicht beim Aufrufer. Im Rohmodus
+     * springt ein blosses {@code \n} nicht an den Zeilenanfang — die Ausgabe
+     * laeuft dann treppenfoermig nach rechts aus dem Bild. Das einmal an der
+     * richtigen Stelle zu erledigen ist die einzige Fassung, bei der es nicht
+     * beim naechsten mehrzeiligen Text wieder passiert. (Es ist passiert: die
+     * Hilfe kam als Treppe.)
+     */
     public void zeile(String text) {
         synchronized (schloss) {
             System.out.print(Terminal.ZEILE_LOESCHEN);
-            System.out.print(text);
-            System.out.print("\r\n");        // Rohmodus: \n allein rueckt nicht zurueck
+            if (text != null && text.indexOf('\n') >= 0) {
+                String[] teile = text.split("\n", -1);
+                for (int i = 0; i < teile.length; i++) {
+                    if (i > 0) System.out.print(Terminal.ZEILE_LOESCHEN);
+                    System.out.print(teile[i]);
+                    System.out.print("\r\n");
+                }
+            } else {
+                System.out.print(text);
+                System.out.print("\r\n");
+            }
             statusZeichnen();
             System.out.flush();
         }
