@@ -53,10 +53,21 @@ calling).
 ```bash
 mvn package
 
-# Interactive session (no --prompt):
+./bin/jaja ~/my-project        # interactive session
+./bin/jaja --liste             # which model servers are up
+```
+
+`bin/jaja` probes the usual ports, asks the server what it is serving and
+starts there. That exists because the harness has to default to *some* port,
+and the moment two models take turns on one machine that default is wrong half
+the time. `JAJA_PORTS="8000 8888"` changes where it looks; `--model <name>`
+finds the port serving that particular model.
+
+The jar underneath takes plain flags, which is what scripts and benchmarks use:
+
+```bash
 java -jar target/jaja-0.1.0.jar --model deepseek-v4-flash --cwd ~/my-project
 
-# One-shot, for scripts and benchmarks:
 java -jar target/jaja-0.1.0.jar \
     --model deepseek-v4-flash \
     --base-url http://127.0.0.1:8888/v1 \
@@ -406,6 +417,7 @@ README are the map.
 ## Layout
 
 ```
+bin/jaja                 start a session, finding the model server itself
 bin/md                   read a markdown file in the terminal
 src/main/java/de/dg1001/harness/
   Main.java              CLI, system prompt, wiring

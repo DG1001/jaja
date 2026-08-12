@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# jaja starten, ohne Port und Modellnamen nachschlagen zu muessen.
+#
+#   jaja                        Sitzung im aktuellen Verzeichnis
+#   jaja ~/projekt              Sitzung dort
+#   jaja --liste                welche Modellserver gerade laufen
+#   jaja --model laguna-s-2.1   dieses Modell suchen, egal auf welchem Port
+#   jaja -- --max-turns 200     alles nach -- geht unveraendert an jaja
+#
+# Wenn Modell oder Adresse fehlen, werden die ueblichen Ports abgeklopft und
+# der Name beim Server selbst erfragt. Das ist der einzige Grund, warum es
+# dieses Skript gibt: die Vorgabe im Harness ist ein Port, und sobald zwei
+# Modelle abwechselnd laufen, stimmt sie die Haelfte der Zeit nicht.
+#
+# Ports anders setzen:  JAJA_PORTS="8888 8889 8000" jaja
+set -e
+
+VERZ=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+JAR=$(ls "$VERZ"/target/jaja-*.jar 2>/dev/null | head -1)
+PORTS=${JAJA_PORTS:-"8888 8889"}
+
+if [ -z "$JAR" ]; then
+    echo "kein Jar in $VERZ/target — erst 'mvn package'" >&2
+    exit 1
+fi
+
+# Fragt einen Port nach seinem Modellnamen. Leer, wenn dort nichts antwortet.
+modell_auf() {
+    curl -s -m 2 "http://127.0.0.1:$1/v1/models" 2>/dev/null \
+        | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
+}
+
+if [ "$1" = "--liste" ]; then
+    gefunden=0
+    for p in $PORTS; do
+        m=$(modell_auf "$p")
+        if [ -n "$m" ]; then printf '  :%s  %s\n' "$p" "$m"; gefunden=1; fi
+    done
+    [ "$gefunden" = 0 ] && echo "  kein Modellserver auf Port(en): $PORTS" >&2
+    exit 0
+fi
+
+# --------------------------------------------------- Argumente durchsehen
+# Ein Verzeichnis als erstes Argument ist eine Abkuerzung fuer --cwd.
+CWD=""
+if [ -n "$1" ] && [ -d "$1" ]; then CWD="$1"; shift; fi
+
+hat_modell=0
+hat_url=0
+gewuenscht=""
+vorher=""
+for a in "$@"; do
+    case "$a" in
+        --model|--model=*)       hat_modell=1 ;;
+        --base-url|--base-url=*) hat_url=1 ;;
+    esac
+    case "$vorher" in --model) gewuenscht="$a" ;; esac
+    case "$a" in --model=*) gewuenscht=${a#--model=} ;; esac
+    vorher="$a"
+done
+
+# ------------------------------------------------------- Server suchen
+if [ "$hat_url" = 0 ]; then
+    port=""
+    for p in $PORTS; do
+        m=$(modell_auf "$p")
+        [ -z "$m" ] && continue
+        # Mit --model wird der Port gesucht, der genau dieses Modell bedient.
+        if [ -n "$gewuenscht" ] && [ "$m" != "$gewuenscht" ]; then continue; fi
+        port="$p"; modell="$m"; break
+    done
+
+    if [ -z "$port" ]; then
+        if [ -n "$gewuenscht" ]; then
+            echo "'$gewuenscht' laeuft auf keinem der Ports: $PORTS" >&2
+        else
+            echo "kein Modellserver auf Port(en): $PORTS" >&2
+        fi
+        echo "  'jaja --liste' zeigt, was da ist; JAJA_PORTS setzt andere Ports." >&2
+        exit 1
+    fi
+
+    set -- --base-url "http://127.0.0.1:$port/v1" "$@"
+    [ "$hat_modell" = 0 ] && set -- --model "$modell" "$@"
+fi
+
+[ -n "$CWD" ] && set -- --cwd "$CWD" "$@"
+
+exec java -jar "$JAR" "$@"
