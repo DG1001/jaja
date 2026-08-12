@@ -97,6 +97,8 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--timeout-minutes <n>` | `25` | per request; local models are slow |
 | `--leise` | off | suppress progress output |
 | `--frei` | off | session: run `bash` without asking |
+| `--systemprompt <path>` | — | replace the built-in prompt entirely |
+| `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 
 Exit code is `0` only on an orderly finish.
 
@@ -274,6 +276,46 @@ sharp edges that are easy to get wrong and unpleasant to debug:
   local hardware, so of course you keep typing. The text reappears at the next
   prompt, ready to edit; the newline is discarded, because sending should be a
   decision and not a timing accident.
+
+## Project rules: `AGENT.md`
+
+An `AGENT.md` (or `AGENTS.md`) in the workspace root is picked up
+automatically and **added to** the built-in prompt, announced on startup:
+
+```
+[harness] Systemprompt aus AGENT.md (235 Zeichen)
+```
+
+```markdown
+# Projektregeln
+
+- Alle Funktionsnamen in diesem Projekt beginnen mit dem Praefix `px_`.
+- Jede Funktion braucht einen Docstring mit einer Zeile `Beispiel:`.
+- Tests liegen im Unterverzeichnis `pruefungen/`, nicht im Wurzelverzeichnis.
+```
+
+All three were followed on the next run, unprompted — `px_addiere`, the
+`Beispiel:` line, and the test in `pruefungen/`.
+
+**Added, not substituted, and that is the whole design decision.** The built-in
+prompt carries instructions that came out of failures — above all *act first,
+do not plan the whole thing up front*, which exists because a measured run
+spent an entire turn inside one thinking block and never called a tool. An
+`AGENT.md` almost always carries something else: which test command applies,
+which style, which directories are off limits. If the file replaced the base,
+you would lose that defence silently, at the exact moment you first write a
+project file — and you would find out via a run that does nothing.
+
+`--systemprompt <file>` replaces it outright for anyone who means to.
+`--kein-agent-md` ignores the project file.
+
+The prompt sits in **every** request, in the part of the budget elision can
+never touch, so a long project file costs on every turn. Past ~6,000 characters
+jaja says so rather than letting it quietly eat the context.
+
+`AGENT.md` and `NOTIZEN.md` do different jobs: rules that outlive the session
+versus state that does not. The handover writes the second and never touches
+the first.
 
 ## Design decisions that came from measurements
 

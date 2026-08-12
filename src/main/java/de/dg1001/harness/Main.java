@@ -2,6 +2,7 @@ package de.dg1001.harness;
 
 import de.dg1001.harness.agent.Agent;
 import de.dg1001.harness.agent.ContextBudget;
+import de.dg1001.harness.agent.Systemprompt;
 import de.dg1001.harness.tools.ToolRegistry;
 import de.dg1001.harness.tui.Anzeige;
 import de.dg1001.harness.tui.Sitzung;
@@ -61,6 +62,12 @@ public final class Main {
                 : o.get("prompt");
 
         Workspace ws = new Workspace(cwd);
+
+        // Projektregeln aus AGENT.md, sofern vorhanden.
+        Systemprompt.Ergebnis sp = Systemprompt.baue(
+                SYSTEM_PROMPT, ws,
+                o.containsKey("systemprompt") ? Path.of(o.get("systemprompt")) : null,
+                o.containsKey("kein-agent-md"));
         ContextBudget budget = ContextBudget.vorgabe(fenster, maxAusgabe);
         ChatClient client = new ChatClient(baseUrl, modell, apiKey, maxAusgabe,
                                            Duration.ofMinutes(minuten));
@@ -75,9 +82,14 @@ public final class Main {
             System.err.println("[harness] Arbeitsbereich " + ws.wurzel());
             System.err.println("[harness] " + budget.bericht(0));
         }
+        if (laut && sp.quelle() != null)
+            System.err.println("[harness] Systemprompt aus " + sp.quelle().getFileName()
+                    + " (" + sp.zeichen() + " Zeichen)");
+        if (sp.warnung() != null)
+            System.err.println("[harness] Achtung: " + sp.warnung());
 
         if (amBildschirm) {
-            sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"));
+            sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp);
             return;
         }
 
@@ -90,7 +102,7 @@ public final class Main {
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget, maxZuege, laut);
 
         long t0 = System.nanoTime();
-        Agent.Ergebnis e = agent.lauf(SYSTEM_PROMPT, aufgabe);
+        Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);
         long sek = (System.nanoTime() - t0) / 1_000_000_000L;
 
         System.err.printf("[harness] %s nach %d Zuegen, %d Werkzeugaufrufen, %d s (%s)%n",
@@ -111,7 +123,8 @@ public final class Main {
      * mehr an, und der Nutzer haelt das zu Recht fuer einen Absturz.
      */
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
-                                int maxZuege, String modell, boolean fragen) throws Exception {
+                                int maxZuege, String modell, boolean fragen,
+                                Systemprompt.Ergebnis sp) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -126,8 +139,12 @@ public final class Main {
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget,
                                     maxZuege, anzeige);
+            if (sp.quelle() != null)
+                anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
+                        + " (" + sp.zeichen() + " Zeichen)");
+            if (sp.warnung() != null) anzeige.hinweis("Achtung: " + sp.warnung());
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
-                        ws, budget, SYSTEM_PROMPT, modell, fragen).lauf();
+                        ws, budget, sp.prompt(), modell, fragen).lauf();
         }
     }
 
@@ -166,6 +183,11 @@ public final class Main {
               --timeout-minutes <n>     je Anfrage, Vorgabe 25
               --leise                   keine Fortschrittsmeldungen
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren
+              --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
+              --kein-agent-md           AGENT.md im Projekt ignorieren
+
+            AGENT.md (oder AGENTS.md) im Arbeitsbereich wird automatisch gelesen
+            und ergaenzt den eingebauten Prompt um die Projektregeln.
 
             Ohne --prompt/--prompt-file startet eine Sitzung am Bildschirm.
 

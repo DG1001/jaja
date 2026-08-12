@@ -92,6 +92,10 @@
             <configuration><mainClass>de.dg1001.harness.agent.ProbeAgent</mainClass></configuration>
           </execution>
           <execution>
+            <id>probe-systemprompt</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.agent.ProbeSystemprompt</mainClass></configuration>
+          </execution>
+          <execution>
             <id>probe-schleife</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.agent.ProbeSchleife</mainClass></configuration>
           </execution>
