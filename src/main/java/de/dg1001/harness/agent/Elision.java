@@ -55,31 +55,66 @@ public final class Elision {
         if (!budget.mussKuerzen(vorher))
             return new Bericht(Ergebnis.NICHT_NOETIG, vorher, vorher, 0, null);
 
-        int stand = vorher;
-        int stufe = 0;
+        int[] stand = {vorher};
+        int stufen = 0;
 
-        for (; stufe < STUFEN.length; stufe++) {
-            int ersetzt = t.kuerze(STUFEN[stufe]);
-            int neu = t.schaetzeTokens();
-
-            if (!budget.mussKuerzen(neu)) {
-                durchgaenge++;
-                return new Bericht(Ergebnis.GEKUERZT, vorher, neu, stufe + 1, null);
-            }
-
-            double wirkung = stand == 0 ? 0 : (double) (stand - neu) / stand;
-            stand = neu;
-
-            // Kein Kandidat mehr uebrig oder Wirkung vernachlaessigbar:
-            // haerter kuerzen bringt nichts, weiterprobieren waere Zeitverschwendung.
-            if (ersetzt == 0 && wirkung < MINDESTWIRKUNG) break;
+        // Erste Stufe: Werkzeugergebnisse.
+        for (int s : STUFEN) {
+            stufen++;
+            if (schritt(t, stand, () -> t.kuerze(s))) break;
         }
 
+        // Zweite Stufe: die Argumente alter Werkzeugaufrufe. Ohne sie steckt
+        // jede laengere Sitzung fest, sobald ein paar Dateien geschrieben
+        // wurden -- der Dateiinhalt steht im Aufruf, nicht im Ergebnis.
+        if (budget.mussKuerzen(stand[0]))
+            for (int s : STUFEN) {
+                stufen++;
+                if (schritt(t, stand, () -> t.kuerzeArgumente(s))) break;
+            }
+
         durchgaenge++;
-        return new Bericht(Ergebnis.AUSSICHTSLOS, vorher, stand, stufe,
+
+        if (!budget.mussKuerzen(stand[0]))
+            return new Bericht(Ergebnis.GEKUERZT, vorher, stand[0], stufen, null);
+
+        // Unter der Schwelle sind wir nicht mehr angekommen. Das ist aber nur
+        // dann aussichtslos, wenn es auch nicht mehr *passt*. Die Schwelle ist
+        // ein Komfortwert; an ihr aufzugeben verschenkte in einem gemessenen
+        // Lauf 14.000 freie Token und beendete eine laufende Sitzung.
+        if (budget.passt(stand[0]))
+            return new Bericht(stand[0] < vorher ? Ergebnis.GEKUERZT : Ergebnis.NICHT_NOETIG,
+                    vorher, stand[0], stufen,
+                    gewarnt ? null : warnung(stand[0]));
+
+        return new Bericht(Ergebnis.AUSSICHTSLOS, vorher, stand[0], stufen,
                 "Kuerzen wirkt nicht mehr — die Last liegt ausserhalb des Verlaufs. "
                 + "Pruefe Systemprompt und Werkzeugbeschreibungen (Grundlast), "
-                + "oder erhoehe das Kontextfenster. " + budget.bericht(stand));
+                + "oder erhoehe das Kontextfenster. " + budget.bericht(stand[0]));
+    }
+
+    /**
+     * Ein Kuerzungsdurchgang.
+     *
+     * @return true, wenn nicht weitergemacht werden muss — entweder weil es
+     *         jetzt passt oder weil weiteres Kuerzen erkennbar nichts bringt
+     */
+    private boolean schritt(Transcript t, int[] stand, java.util.function.IntSupplier kuerzen) {
+        int ersetzt = kuerzen.getAsInt();
+        int neu = t.schaetzeTokens();
+        double wirkung = stand[0] == 0 ? 0 : (double) (stand[0] - neu) / stand[0];
+        stand[0] = neu;
+        if (!budget.mussKuerzen(neu)) return true;
+        return ersetzt == 0 && wirkung < MINDESTWIRKUNG;
+    }
+
+    private boolean gewarnt = false;
+
+    private String warnung(int stand) {
+        gewarnt = true;
+        return "nicht weiter kuerzbar, passt aber noch — " + budget.bericht(stand)
+             + ". Ab hier waechst der Verlauf ungebremst; /neu oder ein groesseres "
+             + "Kontextfenster verschafft Luft.";
     }
 
     public int durchgaenge() { return durchgaenge; }

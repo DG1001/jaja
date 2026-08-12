@@ -1,7 +1,7 @@
 # jaja — Just Another Java Agent
 
 A small agentic coding harness for **local** LLMs, with an interactive
-terminal session. No dependencies, ~3,300 lines of Java 21 plus ~1,100
+terminal session. No dependencies, ~3,400 lines of Java 21 plus ~1,200
 lines of tests, one jar.
 
 It scores **86 / 86** on the four-task benchmark from
@@ -225,10 +225,23 @@ the prefix cache would miss from that point on.
 
 **Elision beats compaction.** Instead of summarising the conversation, old tool
 results are replaced by one line naming the tool, its argument and its exit
-code. It escalates — keep the last 6, then 3, then 1, then 0 — and gives up
-honestly when the fixed overhead alone exceeds the budget, rather than
+code. It escalates — keep the last 6, then 3, then 1, then 0 — rather than
 compacting in a loop. Claude Code failed all four benchmark tasks on this
 hardware precisely by thrashing its own compaction.
+
+**Tool *calls* need eliding too, not just their results.** A `write` carries
+the whole file in its `arguments`. The result ("created, 76 lines") is elided
+within a few turns; the file content sits in the transcript forever. Thirty
+written files is ~10,000 tokens the first stage cannot reach — measured on a
+session that stalled at 33k with every result already a one-liner. So there is
+a second stage: drop large argument values from old calls, keep the short ones
+(`pfad`, `kommando`) that say what happened. The file is on disk and can be
+read again.
+
+**Give up at the limit, not at the threshold.** The 70% mark is when trimming
+*starts*; treating it as the abort criterion ended a live session with
+"context exhausted" while 14,000 tokens were free. If nothing more can be
+trimmed but it still fits, keep going and say so once.
 
 **Reasoning tokens are read but never sent back.** Some servers reject the
 unknown field with a 400, and the thinking block is the single largest item in
@@ -247,10 +260,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 183 checks, plus one round trip against a real server:
+Seven offline suites, 193 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 183 checks, no server required
+mvn test              # 193 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -265,7 +278,7 @@ failure, which is all Maven needs.
 | `ProbeMessages` | 23 | the protocol details that fail silently |
 | `ProbeRetry` | 9 | which errors are worth retrying |
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
-| `ProbeAgent` | 22 | budget, transcript, elision |
+| `ProbeAgent` | 32 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
 | `ProbeTui` | 41 | line editor, display and approval keys, against a byte stream |
 | `Probe` (live) | 1 | round trip to a real server |

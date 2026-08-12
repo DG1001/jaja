@@ -86,6 +86,66 @@ public final class ProbeAgent {
         pruefe("Elision: grosser Verlauf wird gekuerzt",
                ber.ergebnis() == Elision.Ergebnis.GEKUERZT && ber.nachher() < ber.vorher());
 
+        // ---- Der gemeldete Ausfall, nachgebaut ------------------------------
+        // Lange Sitzung: alle Werkzeugergebnisse laengst gekuerzt, aber dreissig
+        // geschriebene Dateien stehen noch als Argumente im Verlauf. Vorher gab
+        // die Kuerzung hier auf und meldete "Kontext erschoepft" -- bei 70 %
+        // Fuellstand und 14.000 freien Token.
+        {
+            ContextBudget lang = ContextBudget.vorgabe(65536, 16384);   // nutzbar 47152
+            Transcript v = new Transcript(new TokenSchaetzer());
+            v.beginne("Systemprompt", "Baue eine Wiki-Anwendung");
+            for (int i = 0; i < 30; i++) {
+                String inhalt = ("inhalt-von-" + i + " ").repeat(300);   // eine ganze Datei
+                v.add(new AssistantMessage(null, null, List.of(new ToolCall(
+                        "c" + i, "write",
+                        "{\"pfad\":\"seite" + i + ".py\",\"inhalt\":\"" + inhalt + "\"}"))));
+                v.addWerkzeugErgebnis(new ToolCall("c" + i, "write", "{}"),
+                                      "angelegt: seite" + i + ".py");
+            }
+            int vorher = v.schaetzeTokens();
+            Elision el = new Elision(lang);
+            Elision.Bericht r1 = el.vielleichtKuerzen(v);
+
+            pruefe("lange Sitzung: kein falsches Aufgeben",
+                   r1.ergebnis() != Elision.Ergebnis.AUSSICHTSLOS);
+            pruefe("lange Sitzung: Werkzeugargumente werden gekuerzt",
+                   r1.nachher() < vorher / 2);
+            pruefe("lange Sitzung: der Pfad bleibt lesbar",
+                   v.nachrichten().toString().contains("seite3.py"));
+            String verlaufText = v.nachrichten().toString();
+            pruefe("lange Sitzung: alte Dateiinhalte sind weg",
+                   !verlaufText.contains("inhalt-von-0 "));
+            // Die juengsten Aufrufe bleiben mit Absicht vollstaendig: dort
+            // arbeitet das Modell gerade.
+            pruefe("lange Sitzung: der juengste Aufruf bleibt vollstaendig",
+                   verlaufText.contains("inhalt-von-29 "));
+            pruefe("lange Sitzung: gekuerzte Aufrufe sind als solche erkennbar",
+                   verlaufText.contains("\"gekuerzt\":true"));
+
+            // Zweiter Durchgang darf nicht in eine Endlosschleife laufen
+            Elision.Bericht r2 = el.vielleichtKuerzen(v);
+            pruefe("lange Sitzung: zweiter Durchgang bleibt ruhig",
+                   r2.ergebnis() == Elision.Ergebnis.NICHT_NOETIG);
+        }
+
+        // Passt noch, aber nichts mehr zu kuerzen: weitermachen, nicht abbrechen.
+        {
+            ContextBudget eng = ContextBudget.vorgabe(65536, 16384);
+            Transcript w = new Transcript(new TokenSchaetzer());
+            // Ueber der 70-%-Schwelle (33006), aber weit unter 47152.
+            w.beginne("S".repeat(120_000), "A");
+            Elision.Bericht r = new Elision(eng).vielleichtKuerzen(w);
+            pruefe("passt noch: kein AUSSICHTSLOS trotz voller Schwelle",
+                   r.ergebnis() != Elision.Ergebnis.AUSSICHTSLOS);
+            pruefe("passt noch: Hinweis sagt, dass es eng wird",
+                   r.hinweis() != null && r.hinweis().contains("passt aber noch"));
+        }
+
+        pruefe("Budget: passt() misst an der echten Grenze, nicht an der Schwelle",
+               ContextBudget.vorgabe(65536, 16384).passt(33098)
+               && ContextBudget.vorgabe(65536, 16384).mussKuerzen(33098));
+
         // Unkuerzbare Last: riesiger Systemprompt, nichts zu kuerzen
         Transcript unkuerzbar = new Transcript(new TokenSchaetzer());
         unkuerzbar.beginne("S".repeat(60_000), "A");

@@ -9,6 +9,7 @@ import de.dg1001.harness.wire.Messages.UserMessage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Der Gespraechsverlauf, mit genug Nebenwissen, um sinnvoll kuerzen zu koennen.
@@ -38,6 +39,12 @@ public final class Transcript {
 
         Eintrag alsGekuerzt(Message ersatz) {
             return new Eintrag(ersatz, werkzeug, argKurz, true, fest);
+        }
+
+        /** Nachricht ersetzen, ohne den Eintrag als gekuerzt zu markieren:
+         *  das Kennzeichen gehoert zur ersten Stufe (Werkzeugergebnisse). */
+        Eintrag mitNachricht(Message ersatz) {
+            return new Eintrag(ersatz, werkzeug, argKurz, gekuerzt, fest);
         }
     }
 
@@ -149,6 +156,82 @@ public final class Transcript {
             gekuerzt++;
         }
         return gekuerzt;
+    }
+
+    /**
+     * Kuerzt die <em>Argumente</em> alter Werkzeugaufrufe.
+     *
+     * <p>Die zweite Stufe, und die noetigere, als es aussieht. Ein
+     * {@code write} traegt die ganze Datei in {@code arguments} — und
+     * waehrend das Ergebnis ("angelegt, 76 Zeilen") laengst gekuerzt ist,
+     * bleibt der Inhalt fuer immer im Verlauf stehen. Nach zwanzig
+     * geschriebenen Dateien sind das zehntausend Token, an die die erste
+     * Stufe nicht herankommt: gemessen an einer Sitzung, die bei 33k
+     * feststeckte, obwohl alle Ergebnisse schon Einzeiler waren.
+     *
+     * <p>Kurze Felder bleiben stehen — {@code pfad} und {@code kommando}
+     * sagen, was geschah, und kosten nichts. Grosse fliegen raus; die Datei
+     * steht auf der Platte und kann gelesen werden.
+     *
+     * @return wie viele Aufrufe gekuerzt wurden
+     */
+    public int kuerzeArgumente(int behalteLetzte) {
+        List<Integer> kandidaten = new ArrayList<>();
+        for (int i = 0; i < eintraege.size(); i++) {
+            Eintrag e = eintraege.get(i);
+            if (e.fest() || !(e.nachricht() instanceof AssistantMessage a)) continue;
+            if (a.toolCalls().isEmpty()) continue;
+            if (a.toolCalls().stream().anyMatch(tc -> tc.argumentsJson().length() > GROSS))
+                kandidaten.add(i);
+        }
+        int bisAusschliesslich = kandidaten.size() - behalteLetzte;
+        int gekuerzt = 0;
+        for (int k = 0; k < bisAusschliesslich; k++) {
+            int i = kandidaten.get(k);
+            Eintrag e = eintraege.get(i);
+            AssistantMessage a = (AssistantMessage) e.nachricht();
+            List<ToolCall> neu = new ArrayList<>(a.toolCalls().size());
+            for (ToolCall tc : a.toolCalls())
+                neu.add(new ToolCall(tc.id(), tc.name(), knappeArgumente(tc.argumentsJson())));
+            eintraege.set(i, e.mitNachricht(
+                    new AssistantMessage(a.content(), a.reasoningContent(), neu)));
+            gekuerzt++;
+        }
+        return gekuerzt;
+    }
+
+    /** Ab dieser Laenge gilt ein Argumentwert als gross genug zum Wegwerfen. */
+    private static final int GROSS = 200;
+
+    /**
+     * Wirft grosse Werte aus den Argumenten und laesst die kleinen stehen.
+     * Das Ergebnis muss gueltiges JSON bleiben — es geht als Zeichenkette
+     * wieder ans Modell.
+     */
+    static String knappeArgumente(String argumentsJson) {
+        Map<String, Object> m;
+        try {
+            m = de.dg1001.harness.wire.Json.obj(
+                    de.dg1001.harness.wire.Json.parse(argumentsJson));
+        } catch (RuntimeException e) {
+            return argumentsJson;              // kaputt: lieber unveraendert lassen
+        }
+        if (m.isEmpty()) return argumentsJson;
+
+        var w = new de.dg1001.harness.wire.Json.Writer().objektAuf();
+        boolean etwasWeg = false;
+        for (var eintrag : m.entrySet()) {
+            Object v = eintrag.getValue();
+            if (v instanceof String s && s.length() > GROSS) { etwasWeg = true; continue; }
+            if (v instanceof String s)        w.feld(eintrag.getKey()).text(s);
+            else if (v instanceof Boolean b)  w.feld(eintrag.getKey()).wahr(b);
+            else if (v instanceof Number n)   w.feld(eintrag.getKey()).zahl(n.longValue());
+            else if (v == null)               w.feld(eintrag.getKey()).text(null);
+            else                              etwasWeg = true;
+        }
+        if (!etwasWeg) return argumentsJson;
+        w.feld("gekuerzt").wahr(true);
+        return w.objektZu().toString();
     }
 
     /** Kurzfassung ohne Modellaufruf. */

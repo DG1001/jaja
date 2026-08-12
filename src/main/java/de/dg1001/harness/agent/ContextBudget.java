@@ -49,8 +49,21 @@ public record ContextBudget(int fenster, int maxAusgabe, int reserve, double sch
         return (int) (nutzbareEingabe() * schwelle);
     }
 
+    /** Ab hier <em>sollte</em> gekuerzt werden — Komfortwert, keine Grenze. */
     public boolean mussKuerzen(int geschaetzteEingabe) {
         return geschaetzteEingabe > kuerzungsSchwelle();
+    }
+
+    /**
+     * Passt die Eingabe ueberhaupt noch?
+     *
+     * <p>Der Unterschied zu {@link #mussKuerzen} ist der zwischen "waere
+     * schoener kleiner" und "geht nicht mehr", und ihn zu verwechseln kostete
+     * einen Lauf: die Kuerzung gab bei 70 % auf und meldete den Kontext als
+     * erschoepft, waehrend 14.000 Token frei waren.
+     */
+    public boolean passt(int geschaetzteEingabe) {
+        return geschaetzteEingabe <= nutzbareEingabe();
     }
 
     /** Fuer Protokoll und Fehlersuche. */
