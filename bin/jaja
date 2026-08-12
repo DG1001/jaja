@@ -16,7 +16,10 @@
 # Ports anders setzen:  JAJA_PORTS="8888 8889 8000" jaja
 set -e
 
-VERZ=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# readlink -f loest Symlinks auf: ohne das zeigt $0 bei einem Link in
+# ~/.local/bin dorthin, und das Jar liegt woanders.
+SELBST=$(readlink -f -- "$0" 2>/dev/null || printf %s "$0")
+VERZ=$(CDPATH= cd -- "$(dirname -- "$SELBST")/.." && pwd)
 JAR=$(ls "$VERZ"/target/jaja-*.jar 2>/dev/null | head -1)
 PORTS=${JAJA_PORTS:-"8888 8889"}
 
