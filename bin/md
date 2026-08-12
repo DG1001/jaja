@@ -1,19 +1,58 @@
 #!/bin/sh
-# Markdown im Terminal lesbar setzen.
 #
-#   md NOTIZEN.md
-#   md --farbe README.md | less -R      (less braucht -R fuer Farben)
+# Markdown im Terminal lesbar setzen, mit Blaettern.
 #
-# Liegt hier und nicht in ~/.local/bin, damit es mit dem Jar zusammenbleibt.
+#   md NOTIZEN.md            blaettert, wenn es nicht auf den Schirm passt
+#   md --kein-pager DATEI     alles auf einmal
+#   md DATEI > datei.txt     ohne Farbe, wie man es von Werkzeugen erwartet
+#
+# Zwei Dinge muessen zusammenpassen, sonst sind die Farben weg:
+#
+#   1. Der Setzer faerbt nur, wenn die Ausgabe an einem Terminal haengt --
+#      dasselbe Verhalten wie ls oder grep. Beim Blaettern haengt sie an einer
+#      Pipe, also muss --farbe ausdruecklich mit.
+#   2. less gibt Steuerfolgen nur mit -R durch; ohne das zeigt es sie als
+#      "ESC[1m" oder verschluckt sie.
+#
+# Dazu -F (bei kurzem Inhalt gar nicht erst blaettern) und -X (den Text nach
+# dem Beenden stehen lassen, statt den Schirm zu loeschen).
+#
+# Anderer Pager:  MD_PAGER="bat --plain" md DATEI
 # Zum Verlinken:  ln -s "$PWD/bin/md" ~/.local/bin/md
 set -e
+
 # readlink -f loest Symlinks auf: ohne das zeigt $0 bei einem Link in
 # ~/.local/bin dorthin, und das Jar liegt woanders.
 SELBST=$(readlink -f -- "$0" 2>/dev/null || printf %s "$0")
 VERZ=$(CDPATH= cd -- "$(dirname -- "$SELBST")/.." && pwd)
 JAR=$(ls "$VERZ"/target/jaja-*.jar 2>/dev/null | head -1)
+
 if [ -z "$JAR" ]; then
     echo "kein Jar in $VERZ/target — erst 'mvn package'" >&2
     exit 1
 fi
-exec java -cp "$JAR" de.dg1001.harness.tui.Markdown "$@"
+
+# --kein-pager herausfiltern, alles andere durchreichen
+kein_pager=0
+n=$#
+i=0
+while [ "$i" -lt "$n" ]; do
+    a=$1; shift; i=$((i + 1))
+    case "$a" in
+        --kein-pager|--kein-blaettern) kein_pager=1 ;;
+        *) set -- "$@" "$a" ;;
+    esac
+done
+
+PAGER_CMD=${MD_PAGER:-"less -RFX"}
+
+# Blaettern nur, wenn die Ausgabe wirklich am Terminal haengt. In einer Pipe
+# oder Datei waere ein Pager eine Falle, kein Dienst.
+if [ "$kein_pager" = 0 ] && [ -t 1 ] \
+        && command -v "${PAGER_CMD%% *}" >/dev/null 2>&1; then
+    # Die Breite ermittelt der Setzer ueber /dev/tty, nicht ueber die Ausgabe --
+    # deshalb stimmt sie auch hinter der Pipe noch.
+    java -cp "$JAR" de.dg1001.harness.tui.Markdown --farbe "$@" | $PAGER_CMD
+else
+    exec java -cp "$JAR" de.dg1001.harness.tui.Markdown "$@"
+fi

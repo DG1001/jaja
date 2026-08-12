@@ -375,11 +375,24 @@ The agent produces a lot of markdown — handovers, READMEs, notes — and `cat`
 shows you the source. `bin/md` typesets it instead:
 
 ```bash
-./bin/md NOTIZEN.md
-./bin/md --farbe README.md | less -R     # less needs -R for colour
+./bin/md NOTIZEN.md          # pages if it does not fit on one screen
+./bin/md --kein-pager FILE   # all at once
+./bin/md FILE > plain.txt    # no colour, like any other tool
 ```
 
 Inside a session, `/zeige` does the same without leaving it.
+
+Paging is handled by the launcher, because getting colour through a pager
+needs **both** halves and each is easy to miss on its own: the renderer only
+colours when its output is a terminal (the same rule `ls` and `grep` follow),
+so the pipe into the pager has to ask for colour explicitly — and `less` only
+passes escape sequences through with `-R`. Add `-F` so short files do not open
+a pager at all and `-X` so the text stays on screen afterwards, and it behaves
+the way you would expect without any of it being your problem. `MD_PAGER`
+overrides the default `less -RFX`.
+
+Line width still comes out right behind the pipe: it is read from `/dev/tty`
+rather than from standard output.
 
 It covers headings, lists, block quotes, links, emphasis, fenced code and — the
 part that earns its keep — **tables with aligned columns**, because a markdown
