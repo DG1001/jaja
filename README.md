@@ -1,7 +1,7 @@
 # jaja — Just Another Java Agent
 
 A small agentic coding harness for **local** LLMs, with an interactive
-terminal session. No dependencies, ~3,400 lines of Java 21 plus ~1,200
+terminal session. No dependencies, ~3,600 lines of Java 21 plus ~1,200
 lines of tests, one jar.
 
 It scores **86 / 86** on the four-task benchmark from
@@ -168,12 +168,52 @@ copying still works.
 | `Ctrl-D` | quit |
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
+| `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` | toggle asking before `bash` |
 | `/verlauf` | transcript size and current token estimate |
 
 Follow-up questions reuse the same `Transcript`, elided results included. That
 is the whole difference between an agent and a script with colours.
+
+### When the context fills up, hand the work over
+
+Eliding only postpones the problem: eventually there is nothing left to trim
+and the session ends mid-task. So when the transcript crosses the trim
+threshold, jaja offers a way out instead of waiting for the wall:
+
+```
+  5 Zuege · 4 Werkzeugaufrufe · 4550 Token im Verlauf
+
+  Der Kontext wird knapp.  4550/5168 Token (88% des nutzbaren Platzes)
+  Stand als NOTIZEN.md sichern und mit frischem Verlauf weitermachen?
+    [j] ja   [n] nein
+    ja
+
+  ⏺ write   NOTIZEN.md   angelegt: NOTIZEN.md (34 Zeilen, 2563 Zeichen)
+  Uebergabe in NOTIZEN.md (34 Zeilen) — frischer Verlauf, 177 Token
+```
+
+**4550 tokens down to 177**, and the work survives in a file a human can read.
+The next prompt starts by reading it back.
+
+The model writes the handover, not the harness. What mattered across twenty
+turns is known only to whoever took them; a mechanical dump of the transcript
+would be a list of filenames without the reasons. It is asked for the goal, what
+is done, what is open, the decisions someone would otherwise have to make again,
+and what is still unverified. One real run produced, unprompted, *"`python` was
+not found on this shell, used `python3` instead"* — exactly the kind of thing
+that costs a turn to rediscover.
+
+Two rules it follows:
+
+- **Ask, never assume.** Discarding a transcript cannot be undone, and only the
+  person at the keyboard knows whether this is a good moment.
+- **Discard only after the file exists.** If the handover turn fails, the
+  transcript stays. Losing both would be the one unforgivable outcome here.
+
+`/zusammenfassen` triggers it at any time, and takes a filename — `AGENT.md`,
+`PROJEKT.md`, whatever the project already uses.
 
 **`bash` asks before it runs.** It executes whatever the model writes, with your
 permissions; in a benchmark that is fine because the directory is disposable, at
@@ -260,10 +300,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 193 checks, plus one round trip against a real server:
+Seven offline suites, 202 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 193 checks, no server required
+mvn test              # 202 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -280,7 +320,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 32 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 41 | line editor, display and approval keys, against a byte stream |
+| `ProbeTui` | 50 | line editor, display, approval keys, handover prompt |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:

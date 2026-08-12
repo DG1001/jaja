@@ -127,7 +127,7 @@ public final class Main {
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget,
                                     maxZuege, anzeige);
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
-                        ws, SYSTEM_PROMPT, modell, fragen).lauf();
+                        ws, budget, SYSTEM_PROMPT, modell, fragen).lauf();
         }
     }
 

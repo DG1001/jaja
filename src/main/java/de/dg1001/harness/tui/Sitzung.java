@@ -1,6 +1,7 @@
 package de.dg1001.harness.tui;
 
 import de.dg1001.harness.agent.Agent;
+import de.dg1001.harness.agent.ContextBudget;
 import de.dg1001.harness.agent.Freigabe;
 import de.dg1001.harness.agent.TokenSchaetzer;
 import de.dg1001.harness.agent.Transcript;
@@ -48,8 +49,16 @@ public final class Sitzung {
     private final InputStream in;
     private final TokenSchaetzer schaetzer;
 
+    private final ContextBudget budget;
     private Transcript verlauf;
     private boolean fragen;              // vor bash nachfragen?
+
+    /** Standardname der Uebergabe. Bewusst im Projekt und nicht in .harness:
+     *  die Datei ist fuer Menschen mitgedacht, nicht nur fuer den naechsten Lauf. */
+    private String notizdatei = "NOTIZEN.md";
+
+    /** Damit das Angebot nicht nach jedem Auftrag erneut kommt. */
+    private boolean schonAngeboten = false;
 
     /** Offene Freigabefrage; nur der Hauptfaden beantwortet sie. */
     private volatile ToolCall offeneFrage;
@@ -59,7 +68,9 @@ public final class Sitzung {
     private final StringBuilder vorgetippt = new StringBuilder();
 
     public Sitzung(Agent agent, TokenSchaetzer schaetzer, Anzeige anzeige, InputStream in,
-                   Workspace ws, String systemPrompt, String modell, boolean fragen) {
+                   Workspace ws, ContextBudget budget, String systemPrompt, String modell,
+                   boolean fragen) {
+        this.budget       = budget;
         this.agent        = agent;
         this.schaetzer    = schaetzer;
         this.anzeige      = anzeige;
@@ -91,7 +102,7 @@ public final class Sitzung {
                 eingabe.merke(text);
 
                 if (text.startsWith("/")) {
-                    if (befehl(text)) return;
+                    if (befehl(text, exec)) return;
                     continue;
                 }
                 beauftrage(text, exec);
@@ -144,6 +155,127 @@ public final class Sitzung {
                       + erg.werkzeugaufrufe() + " Werkzeugaufrufe · "
                       + verlauf.schaetzeTokens() + " Token im Verlauf" + Terminal.NORMAL);
         anzeige.leerzeile();
+
+        vielleichtUebergabeAnbieten(erg, exec);
+    }
+
+    // ------------------------------------------------------------- Uebergabe
+
+    /**
+     * Bietet an, den Stand zu sichern, bevor der Kontext ausgeht.
+     *
+     * <p>Kuerzen verschiebt das Problem nur: irgendwann ist auch das
+     * kuerzbare aufgebraucht, und dann endet die Sitzung mitten in der
+     * Arbeit. Eine Uebergabedatei loest es — sie kostet einen Zug, ist
+     * hinterher lesbar, und der frische Verlauf faengt bei ein paar hundert
+     * Token an statt bei zehntausend.
+     *
+     * <p>Gefragt wird, nicht gemacht. Den Verlauf wegzuwerfen ist nicht
+     * umkehrbar, und nur der Mensch weiss, ob gerade ein guter Moment ist.
+     */
+    private void vielleichtUebergabeAnbieten(Agent.Ergebnis erg, ExecutorService exec)
+            throws IOException {
+        boolean erschoepft = erg.status() == Agent.Status.KONTEXT_ERSCHOEPFT;
+        boolean knapp = budget.mussKuerzen(verlauf.schaetzeTokens());
+        if (!erschoepft && !knapp) { schonAngeboten = false; return; }
+        if (schonAngeboten && !erschoepft) return;
+        schonAngeboten = true;
+
+        anzeige.zeile("  " + Terminal.GELB + (erschoepft
+                ? "Der Kontext ist voll."
+                : "Der Kontext wird knapp.") + Terminal.NORMAL
+                + "  " + Terminal.GRAU + budget.bericht(verlauf.schaetzeTokens()) + Terminal.NORMAL);
+        if (!jaNein("Stand als " + notizdatei + " sichern und mit frischem Verlauf weitermachen?"))
+            return;
+        uebergabe(exec);
+    }
+
+    /**
+     * Laesst das Modell eine Uebergabe schreiben und faengt danach neu an.
+     *
+     * <p>Das Modell schreibt sie, nicht der Harness: was von zwanzig Zuegen
+     * wichtig war, weiss nur, wer sie gemacht hat. Ein mechanischer Auszug
+     * aus dem Verlauf waere eine Liste von Dateinamen ohne das Warum.
+     *
+     * <p><b>Der Verlauf wird erst verworfen, wenn die Datei wirklich da ist.</b>
+     * Andernfalls stuende man ohne beides da — und das ist der eine Fehler,
+     * den man hier nicht machen darf.
+     */
+    private void uebergabe(ExecutorService exec) throws IOException {
+        verlauf.add(new UserMessage(uebergabeAuftrag(notizdatei)));
+
+        anzeige.leerzeile();
+        agent.abbruchZuruecksetzen();
+        anzeige.statusStarten("schreibt die Uebergabe");
+        Future<Agent.Ergebnis> f = exec.submit(() -> agent.lauf(verlauf));
+        tastaturWaehrendArbeit(f);
+        Agent.Ergebnis e;
+        try { e = f.get(); }
+        catch (Exception ex) {
+            anzeige.statusBeenden();
+            anzeige.zeile("  " + Terminal.ROT + "Uebergabe fehlgeschlagen: " + ex.getCause()
+                          + " — der Verlauf bleibt" + Terminal.NORMAL);
+            return;
+        }
+        anzeige.statusBeenden();
+
+        Path ziel = ws.wurzel().resolve(notizdatei);
+        if (!Files.exists(ziel)) {
+            anzeige.zeile("  " + Terminal.ROT + notizdatei + " wurde nicht geschrieben ("
+                          + e.status() + ") — der Verlauf bleibt unangetastet" + Terminal.NORMAL);
+            return;
+        }
+
+        long zeilen;
+        try { zeilen = Files.readAllLines(ziel).size(); } catch (IOException ex) { zeilen = 0; }
+
+        verlauf = new Transcript(schaetzer);
+        verlauf.beginne(systemPrompt, "Wir setzen eine laufende Arbeit fort. Der Stand steht in "
+                + notizdatei + ". Lies die Datei zuerst und arbeite dann dort weiter.");
+        schonAngeboten = false;
+
+        anzeige.zeile("  " + Terminal.GRUEN + "Uebergabe in " + notizdatei + " (" + zeilen
+                      + " Zeilen)" + Terminal.NORMAL + Terminal.GRAU
+                      + " — frischer Verlauf, " + verlauf.schaetzeTokens() + " Token"
+                      + Terminal.NORMAL);
+        anzeige.leerzeile();
+    }
+
+    /** Der Auftrag an das Modell. Er beschreibt, was jemand braucht, der den
+     *  Verlauf nicht kennt — nicht, was schoen aussieht. */
+    static String uebergabeAuftrag(String datei) {
+        return """
+               Der bisherige Verlauf wird gleich verworfen, damit wir mit frischem \
+               Kontext weiterarbeiten koennen. Schreibe jetzt mit dem write-Werkzeug \
+               eine Uebergabe nach %s.
+
+               Sie muss allein genuegen, um die Arbeit fortzusetzen, ohne diesen \
+               Verlauf zu kennen:
+
+               - Ziel der Aufgabe in eigenen Worten
+               - was fertig ist, mit Dateinamen
+               - was noch offen ist, als Liste
+               - Entscheidungen und Annahmen, die man sonst neu treffen muesste
+               - was zuletzt schiefging und was noch ungeprueft ist
+
+               Kurz fassen, aber nichts weglassen, was man sich sonst neu \
+               erarbeiten muesste. Schreibe die Datei und tue danach nichts weiter."""
+               .formatted(datei);
+    }
+
+    /** Einzelne Taste, gelesen wie eine Freigabe. */
+    private boolean jaNein(String frage) throws IOException {
+        anzeige.zeile("  " + Terminal.GELB + frage + Terminal.NORMAL);
+        anzeige.zeile("  " + Terminal.GRAU + "  [j] ja   [n] nein" + Terminal.NORMAL);
+        while (true) {
+            int c = Terminal.liesZeichen(in);
+            if (c < 0) return false;
+            Boolean a = freigabeAntwort(c);
+            if (a != null) {
+                anzeige.zeile("  " + Terminal.GRAU + (a ? "  ja" : "  nein") + Terminal.NORMAL);
+                return a;
+            }
+        }
     }
 
     /**
@@ -249,7 +381,7 @@ public final class Sitzung {
     // --------------------------------------------------------------- Befehle
 
     /** @return true, wenn die Sitzung enden soll. */
-    private boolean befehl(String zeile) {
+    private boolean befehl(String zeile, ExecutorService exec) throws IOException {
         String[] teile = zeile.trim().split("\\s+", 2);
         String was = teile[0];
         String rest = teile.length > 1 ? teile[1] : null;
@@ -267,6 +399,14 @@ public final class Sitzung {
                 anzeige.zeile("  " + Terminal.GRAU
                         + (fragen ? "bash fragt wieder nach" : "bash laeuft ab jetzt ungefragt")
                         + Terminal.NORMAL);
+            }
+
+            case "/zusammenfassen", "/uebergabe" -> {
+                if (rest != null && !rest.isBlank()) notizdatei = rest.trim();
+                if (verlauf.anzahl() == 0)
+                    anzeige.zeile("  " + Terminal.GRAU + "noch nichts zu uebergeben"
+                                  + Terminal.NORMAL);
+                else uebergabe(exec);
             }
 
             case "/speichern" -> speichern(rest);
@@ -287,6 +427,7 @@ public final class Sitzung {
     private void hilfe() {
         anzeige.zeile("  " + Terminal.GRAU + """
                 /neu             Verlauf verwerfen und neu anfangen
+                  /zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) und frisch weiter
                   /speichern [n]   Sitzung nach .harness/sitzung-<n>.json schreiben
                   /laden [n]       gespeicherte Sitzung zurueckholen
                   /frei            Nachfragen vor bash an- und abschalten

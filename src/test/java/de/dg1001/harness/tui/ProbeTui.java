@@ -102,6 +102,25 @@ public final class ProbeTui {
                Sitzung.freigabeAntwort('e'), null);
         pruefe("Leertaste ist keine Antwort", Sitzung.freigabeAntwort(' '), null);
 
+        // ----------------------------------------------------------- Uebergabe
+        // Der Auftrag muss alles nennen, was jemand braucht, der den Verlauf
+        // nicht kennt. Fehlt hier ein Punkt, merkt man es erst, wenn der
+        // Verlauf schon weg ist -- und dann ist es zu spaet.
+        {
+            String a = Sitzung.uebergabeAuftrag("NOTIZEN.md");
+            pruefe("Uebergabe: nennt die Zieldatei", a.contains("NOTIZEN.md"), true);
+            pruefe("Uebergabe: verlangt das write-Werkzeug", a.contains("write"), true);
+            pruefe("Uebergabe: fragt nach dem Ziel", a.contains("Ziel der Aufgabe"), true);
+            pruefe("Uebergabe: fragt nach Fertigem", a.contains("was fertig ist"), true);
+            pruefe("Uebergabe: fragt nach Offenem", a.contains("noch offen"), true);
+            pruefe("Uebergabe: fragt nach Entscheidungen", a.contains("Entscheidungen"), true);
+            pruefe("Uebergabe: fragt nach Ungepruefsem", a.contains("ungeprueft"), true);
+            pruefe("Uebergabe: verbietet Weiterarbeit danach",
+                   a.contains("danach nichts weiter"), true);
+            pruefe("Uebergabe: eigener Dateiname wird uebernommen",
+                   Sitzung.uebergabeAuftrag("projekt.md").contains("projekt.md"), true);
+        }
+
         // ------------------------------------------------------------ Anzeige
         pruefe("Werkzeugzeile nennt Name und Argument",
                gezeichnet(a -> a.werkzeugFertig(
