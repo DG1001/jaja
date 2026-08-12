@@ -62,7 +62,7 @@ public final class Sitzung {
 
     /** Offene Freigabefrage; nur der Hauptfaden beantwortet sie. */
     private volatile ToolCall offeneFrage;
-    private final SynchronousQueue<Boolean> antwort = new SynchronousQueue<>();
+    private final SynchronousQueue<Antwort> antwort = new SynchronousQueue<>();
 
     /** Was waehrend eines laufenden Zuges getippt wurde. */
     private final StringBuilder vorgetippt = new StringBuilder();
@@ -81,6 +81,7 @@ public final class Sitzung {
         this.modell       = modell;
         this.fragen       = fragen;
         this.verlauf      = new Transcript(schaetzer);
+        anzeige.setzeFrei(!fragen);
 
         agent.mitFreigabe(freigabe());
     }
@@ -270,10 +271,11 @@ public final class Sitzung {
         while (true) {
             int c = Terminal.liesZeichen(in);
             if (c < 0) return false;
-            Boolean a = freigabeAntwort(c);
-            if (a != null) {
-                anzeige.zeile("  " + Terminal.GRAU + (a ? "  ja" : "  nein") + Terminal.NORMAL);
-                return a;
+            Antwort a = freigabeAntwort(c);
+            if (a == Antwort.JA || a == Antwort.NEIN) {
+                boolean ja = a == Antwort.JA;
+                anzeige.zeile("  " + Terminal.GRAU + (ja ? "  ja" : "  nein") + Terminal.NORMAL);
+                return ja;
             }
         }
     }
@@ -294,14 +296,28 @@ public final class Sitzung {
             int c = Terminal.liesZeichen(in);
 
             if (offeneFrage != null) {
-                Boolean a = freigabeAntwort(c);
-                if (a != null) gib(a);
+                Antwort a = freigabeAntwort(c);
+                if (a != Antwort.KEINE) gib(a);
                 continue;
             }
 
             if (c == 3) {
                 agent.brichAb();
                 anzeige.hinweis("Abbruch angefordert — der laufende Zug wird noch beendet");
+                continue;
+            }
+
+            // Ctrl-F schaltet das Nachfragen um, waehrend der Agent laeuft.
+            // Am Prompt gibt es dafuer /frei und /fragen; hier gibt es keinen
+            // Prompt, und gerade waehrend eines langen Laufs merkt man, dass
+            // man doch lieber gefragt werden moechte -- oder eben nicht mehr.
+            // Ein Steuerzeichen, damit es nie im vorgetippten Text landet.
+            if (c == 6) {
+                fragen = !fragen;
+                anzeige.setzeFrei(!fragen);
+                anzeige.hinweis(fragen
+                        ? "bash fragt ab dem naechsten Aufruf wieder nach"
+                        : "bash laeuft ab dem naechsten Aufruf ungefragt");
                 continue;
             }
 
@@ -317,30 +333,35 @@ public final class Sitzung {
         }
     }
 
+    /** Antwort auf eine Freigabefrage. */
+    public enum Antwort { JA, NEIN, IMMER, KEINE }
+
     /**
      * Deutet einen Tastendruck als Antwort auf eine Freigabefrage.
      *
-     * <p>Nur {@code j} und {@code n} zaehlen; alles andere wird ignoriert und
-     * die Frage bleibt stehen. Das klingt kleinlich, ist aber der Unterschied
-     * zwischen einer Frage und einer Falle: vorher galt jede Taste ausser
-     * {@code j} als Ablehnung, und wer waehrend eines langen Zuges seinen
-     * naechsten Auftrag tippte, lehnte damit unbemerkt ein Kommando ab.
-     * Beobachtet an einem {@code /} — dem ersten Zeichen von {@code /ende}.
+     * <p>Nur {@code j}, {@code n} und {@code f} zaehlen; alles andere wird
+     * ignoriert und die Frage bleibt stehen. Das klingt kleinlich, ist aber
+     * der Unterschied zwischen einer Frage und einer Falle: einmal galt jede
+     * Taste ausser {@code j} als Ablehnung, und wer waehrend eines langen
+     * Zuges seinen naechsten Auftrag tippte, lehnte damit unbemerkt ein
+     * Kommando ab. Beobachtet an einem {@code /} — dem ersten Zeichen von
+     * {@code /ende}.
      *
      * <p>Auch die Eingabetaste bedeutet <em>nichts</em>. Eine Vorgabe per
      * Enter waere bequem, aber bei einer Frage, die eine Shell startet, soll
-     * die Zustimmung ausdruecklich sein.
-     *
-     * @return TRUE ausfuehren, FALSE ablehnen, null keine Antwort
+     * die Zustimmung ausdruecklich sein. Aus demselben Grund liegt {@code f}
+     * nicht neben {@code j}: es schaltet das Fragen dauerhaft ab, und das
+     * soll kein Vertipper erledigen.
      */
-    static Boolean freigabeAntwort(int c) {
-        if (c == 'j' || c == 'J' || c == 'y' || c == 'Y') return Boolean.TRUE;
-        if (c == 'n' || c == 'N' || c == 3)               return Boolean.FALSE;
-        return null;
+    static Antwort freigabeAntwort(int c) {
+        if (c == 'j' || c == 'J' || c == 'y' || c == 'Y') return Antwort.JA;
+        if (c == 'n' || c == 'N' || c == 3)               return Antwort.NEIN;
+        if (c == 'f' || c == 'F')                         return Antwort.IMMER;
+        return Antwort.KEINE;
     }
 
-    private void gib(boolean ja) {
-        try { antwort.put(ja); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    private void gib(Antwort a) {
+        try { antwort.put(a); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     // -------------------------------------------------------------- Freigabe
@@ -355,14 +376,25 @@ public final class Sitzung {
                 String kommando = kommando(tc);
                 anzeige.zeile("");
                 anzeige.zeile("  " + Terminal.GELB + "bash?" + Terminal.NORMAL + "  " + kommando);
-                anzeige.zeile("  " + Terminal.GRAU + "  [j] ausfuehren   [n] ablehnen   (andere Tasten: keine Antwort)" + Terminal.NORMAL);
+                anzeige.zeile("  " + Terminal.GRAU
+                        + "  [j] ausfuehren   [n] ablehnen   "
+                        + "[f] ausfuehren und ab jetzt nicht mehr fragen" + Terminal.NORMAL);
 
                 offeneFrage = tc;
-                boolean ja;
-                try { ja = antwort.take(); }
-                catch (InterruptedException e) { Thread.currentThread().interrupt(); ja = false; }
+                Antwort a;
+                try { a = antwort.take(); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); a = Antwort.NEIN; }
                 finally { offeneFrage = null; }
 
+                if (a == Antwort.IMMER) {
+                    fragen = false;
+                    anzeige.setzeFrei(true);
+                    anzeige.zeile("  " + Terminal.GRUEN + "  ausgefuehrt" + Terminal.NORMAL
+                            + Terminal.GRAU + " — bash laeuft ab jetzt ungefragt, "
+                            + "/fragen schaltet es wieder ein" + Terminal.NORMAL);
+                    return null;
+                }
+                boolean ja = a == Antwort.JA;
                 anzeige.zeile("  " + (ja ? Terminal.GRUEN + "  ausgefuehrt" : Terminal.ROT + "  abgelehnt")
                               + Terminal.NORMAL);
                 return ja ? null : "Der Nutzer hat dieses Kommando abgelehnt. "
@@ -394,11 +426,19 @@ public final class Sitzung {
                 anzeige.zeile("  " + Terminal.GRAU + "Verlauf geleert" + Terminal.NORMAL);
             }
 
+            // Zwei Befehle statt eines Umschalters: bei einem Umschalter muss
+            // man wissen, wo man gerade steht, und genau das weiss man nach
+            // zwanzig Minuten Arbeit nicht mehr.
             case "/frei" -> {
-                fragen = !fragen;
+                fragen = false; anzeige.setzeFrei(true);
                 anzeige.zeile("  " + Terminal.GRAU
-                        + (fragen ? "bash fragt wieder nach" : "bash laeuft ab jetzt ungefragt")
+                        + "bash laeuft ab jetzt ungefragt — /fragen schaltet es wieder ein"
                         + Terminal.NORMAL);
+            }
+
+            case "/fragen" -> {
+                fragen = true; anzeige.setzeFrei(false);
+                anzeige.zeile("  " + Terminal.GRAU + "bash fragt wieder nach" + Terminal.NORMAL);
             }
 
             case "/zusammenfassen", "/uebergabe" -> {
@@ -430,10 +470,12 @@ public final class Sitzung {
                   /zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) und frisch weiter
                   /speichern [n]   Sitzung nach .harness/sitzung-<n>.json schreiben
                   /laden [n]       gespeicherte Sitzung zurueckholen
-                  /frei            Nachfragen vor bash an- und abschalten
+                  /frei            bash ohne Nachfrage ausfuehren
+                  /fragen          vor bash wieder nachfragen
                   /verlauf         Groesse des Verlaufs
                   /ende            Schluss (auch Ctrl-D)
-                  Ctrl-C           laufenden Zug abbrechen, Sitzung bleibt""".stripIndent()
+                  Ctrl-C           laufenden Zug abbrechen, Sitzung bleibt
+                  Ctrl-F           waehrend eines Laufs zwischen frei und fragen wechseln""".stripIndent()
                 + Terminal.NORMAL);
     }
 

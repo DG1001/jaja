@@ -27,8 +27,14 @@ public final class Anzeige implements Beobachter {
     private volatile boolean statusAn = false;
     private volatile int zug, maxZuege, token, tokenBudget;
     private volatile String taetigkeit = "";
+    private volatile boolean frei = false;
     private volatile long begonnen;
     private Thread ticker;
+
+    /** Ob bash ungefragt laeuft. Steht in der Statuszeile, weil man waehrend
+     *  eines Zuges sonst nicht sieht, ob noch gefragt wird — und das ist die
+     *  eine Einstellung, bei der Raten teuer werden kann. */
+    public void setzeFrei(boolean f) { this.frei = f; }
 
     public Anzeige(int maxZuege) {
         this.maxZuege = maxZuege;
@@ -89,6 +95,7 @@ public final class Anzeige implements Beobachter {
             b.append(kurz(token)).append('/').append(kurz(tokenBudget)).append(" Token · ");
         b.append(dauer(sek));
         if (!taetigkeit.isEmpty()) b.append(" · ").append(taetigkeit);
+        if (frei) b.append(" · frei");
         b.append("   ^C bricht ab");
 
         String s = b.toString();

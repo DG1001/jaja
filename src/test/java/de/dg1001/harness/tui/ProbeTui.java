@@ -92,15 +92,29 @@ public final class ProbeTui {
         // Vorher galt jede Taste ausser 'j' als Ablehnung. Wer waehrend eines
         // langen Zuges weitertippte, lehnte damit unbemerkt Kommandos ab --
         // gemessen an einem '/', dem ersten Zeichen von "/ende".
-        pruefe("j fuehrt aus",        Sitzung.freigabeAntwort('j'), Boolean.TRUE);
-        pruefe("n lehnt ab",          Sitzung.freigabeAntwort('n'), Boolean.FALSE);
-        pruefe("Ctrl-C lehnt ab",     Sitzung.freigabeAntwort(3),   Boolean.FALSE);
+        pruefe("j fuehrt aus",     Sitzung.freigabeAntwort('j'), Sitzung.Antwort.JA);
+        pruefe("n lehnt ab",       Sitzung.freigabeAntwort('n'), Sitzung.Antwort.NEIN);
+        pruefe("Ctrl-C lehnt ab",  Sitzung.freigabeAntwort(3),   Sitzung.Antwort.NEIN);
+        pruefe("f fuehrt aus und schaltet das Fragen ab",
+               Sitzung.freigabeAntwort('f'), Sitzung.Antwort.IMMER);
+        pruefe("F wie f", Sitzung.freigabeAntwort('F'), Sitzung.Antwort.IMMER);
         pruefe("Eingabetaste ist keine Zustimmung",
-               Sitzung.freigabeAntwort('\r'), null);
-        pruefe("Schraegstrich ist keine Antwort", Sitzung.freigabeAntwort('/'), null);
+               Sitzung.freigabeAntwort('\r'), Sitzung.Antwort.KEINE);
+        pruefe("Schraegstrich ist keine Antwort",
+               Sitzung.freigabeAntwort('/'), Sitzung.Antwort.KEINE);
         pruefe("Buchstabe eines Auftrags ist keine Antwort",
-               Sitzung.freigabeAntwort('e'), null);
-        pruefe("Leertaste ist keine Antwort", Sitzung.freigabeAntwort(' '), null);
+               Sitzung.freigabeAntwort('e'), Sitzung.Antwort.KEINE);
+        pruefe("Leertaste ist keine Antwort",
+               Sitzung.freigabeAntwort(' '), Sitzung.Antwort.KEINE);
+        // Ctrl-F schaltet waehrend eines Laufs um und darf deshalb keine
+        // Antwort auf eine offene Freigabefrage sein -- sonst wuerde derselbe
+        // Tastendruck je nach Zeitpunkt zwei verschiedene Dinge tun.
+        pruefe("Ctrl-F ist keine Freigabeantwort",
+               Sitzung.freigabeAntwort(6), Sitzung.Antwort.KEINE);
+        // 'f' und 'j' duerfen nicht verwechselbar sein: 'f' schaltet dauerhaft
+        // ab, das soll kein Vertipper erledigen.
+        pruefe("j und f sind verschiedene Antworten",
+               Sitzung.freigabeAntwort('j') != Sitzung.freigabeAntwort('f'), true);
 
         // ----------------------------------------------------------- Uebergabe
         // Der Auftrag muss alles nennen, was jemand braucht, der den Verlauf
@@ -160,6 +174,15 @@ public final class ProbeTui {
 
         // Jede gewoehnliche Zeile muss die Statuszeile vorher wegwischen --
         // sonst bleiben Reste der alten Statuszeile im Rueckblick stehen.
+        // Der Modus muss waehrend eines Zuges sichtbar sein -- ob noch gefragt
+        // wird, ist die eine Einstellung, bei der Raten teuer werden kann.
+        pruefe("Statuszeile zeigt den freien Modus",
+               gezeichnet(a -> { a.setzeFrei(true); a.statusStarten("denkt"); a.statusBeenden(); }),
+               t -> t.contains("frei"));
+        pruefe("ohne freien Modus steht da nichts",
+               gezeichnet(a -> { a.setzeFrei(false); a.statusStarten("denkt"); a.statusBeenden(); }),
+               t -> !t.contains("frei"));
+
         pruefe("Ausgabe loescht die Statuszeile",
                gezeichnet(a -> a.zeile("text")),
                t -> t.startsWith(Terminal.ZEILE_LOESCHEN));

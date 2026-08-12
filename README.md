@@ -166,11 +166,12 @@ copying still works.
 |---|---|
 | `Ctrl-C` | abort the running turn — the session and the transcript survive |
 | `Ctrl-D` | quit |
+| `Ctrl-F` | switch asking on or off **while a turn is running** |
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
-| `/frei` | toggle asking before `bash` |
+| `/frei` · `/fragen` | run `bash` unasked · ask again |
 | `/verlauf` | transcript size and current token estimate |
 
 Follow-up questions reuse the same `Transcript`, elided results included. That
@@ -220,12 +221,21 @@ permissions; in a benchmark that is fine because the directory is disposable, at
 a terminal it is not. A refusal is not an error — the model gets a tool result
 explaining it and can pick another route. `--frei` or `/frei` turns it off.
 
-Only `j` and `n` answer the question; every other key is ignored and the prompt
-stays. That is not fussiness — the first version treated anything but `j` as a
+`j` runs it, `n` refuses, and **`f` runs it and stops asking from then on**.
+Every other key is ignored and the prompt stays. That is not fussiness — the first version treated anything but `j` as a
 refusal, so typing your next prompt while a turn ran silently refused whatever
 came up. It showed up in a live session as a `/` — the first character of
 `/ende` — cancelling a command nobody meant to cancel. `Enter` means nothing
-either: agreeing to start a shell should be explicit.
+either: agreeing to start a shell should be explicit. `f` sits away from `j`
+for the same reason — it disables the question permanently, and a typo should
+not be able to do that.
+
+Switching back matters as much as switching off, and a turn can run for
+minutes with no prompt in sight. So **`Ctrl-F` toggles asking mid-run**: a
+control character, because any printable key would land in the buffered text
+for the next prompt instead. It takes effect from the next tool call — one
+already waiting for an answer keeps waiting. The status line carries `· frei`
+whenever asking is off, so the mode is never something you have to remember.
 
 ### Three things the terminal handling has to get right
 
@@ -300,10 +310,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 202 checks, plus one round trip against a real server:
+Seven offline suites, 215 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 202 checks, no server required
+mvn test              # 215 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -320,7 +330,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 32 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 50 | line editor, display, approval keys, handover prompt |
+| `ProbeTui` | 63 | line editor, display, approval keys, handover prompt |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
