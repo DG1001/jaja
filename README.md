@@ -310,10 +310,10 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, 215 checks, plus one round trip against a real server:
+Seven offline suites, 208 checks, plus one round trip against a real server:
 
 ```bash
-mvn test              # 215 checks, no server required
+mvn test              # 208 checks, no server required
 mvn test -Plive       # additionally: one real round trip to a model server
 ```
 
@@ -330,7 +330,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | 32 | all six tools, path confinement, spilling |
 | `ProbeAgent` | 32 | budget, transcript, elision |
 | `ProbeSchleife` | 17 | the loop and approvals, against a scripted endpoint |
-| `ProbeTui` | 63 | line editor, display, approval keys, handover prompt |
+| `ProbeTui` | 56 | line editor, display, approval keys, handover prompt |
 | `Probe` (live) | 1 | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
