@@ -77,17 +77,34 @@ public final class Indexer {
      * @param melder bekommt je Buendel eine Zeile Fortschritt
      */
     public Ergebnis lauf(Karte karte, Consumer<String> melder) throws IOException {
+        return lauf(karte, null, melder);
+    }
+
+    /**
+     * @param muster Glob, das die Auswahl einschraenkt; null heisst alles
+     *
+     * <p>Der Umfang ist der Unterschied zwischen brauchbar und theoretisch.
+     * An Django gerechnet: alles zu beschreiben sind 373 Anfragen und damit
+     * ein Nachtlauf, {@code django/db/**} sind 21 Anfragen und eine
+     * Kaffeepause. Beschrieben wird der Teil, in dem man arbeitet, und der
+     * Rest bleibt Struktur — beides steht nebeneinander in derselben Karte.
+     */
+    public Ergebnis lauf(Karte karte, List<java.nio.file.PathMatcher> muster,
+                         Consumer<String> melder) throws IOException {
         karte.auffrischen();
 
         List<Quelldatei> offen = new ArrayList<>();
-        for (Quelldatei q : karte.suche(null, null))          // nach Eingangsgrad sortiert
+        for (Quelldatei q : karte.suche(null, muster))        // nach Eingangsgrad sortiert
             if (!q.beschreibungGueltig() && !q.definitionen().isEmpty()) offen.add(q);
 
         if (offen.isEmpty()) {
-            melder.accept("Alle " + karte.anzahl() + " Dateien haben eine gueltige Beschreibung.");
+            melder.accept(muster == null
+                    ? "Alle " + karte.anzahl() + " Dateien haben eine gueltige Beschreibung."
+                    : "Keine Datei im gewaehlten Bereich braucht eine Beschreibung.");
             return new Ergebnis(0, 0, 0, false);
         }
-        melder.accept(offen.size() + " von " + karte.anzahl() + " Dateien brauchen eine Beschreibung.");
+        melder.accept(offen.size() + " von " + karte.anzahl() + " Dateien brauchen eine "
+                + "Beschreibung (" + schaetzung(offen) + ").");
 
         int beschrieben = 0, buendel = 0;
         for (List<Quelldatei> gruppe : buendeln(offen)) {
@@ -103,6 +120,13 @@ public final class Indexer {
                     + " beschrieben (" + beschrieben + "/" + offen.size() + " gesamt)");
         }
         return new Ergebnis(beschrieben, offen.size() - beschrieben, buendel, false);
+    }
+
+    /** Damit vorher klar ist, worauf man sich einlaesst. */
+    private static String schaetzung(List<Quelldatei> offen) {
+        int anfragen = buendeln(offen).size();
+        return anfragen + " Anfragen, grob " + Math.max(1, anfragen / 2) + " bis "
+             + anfragen + " Minuten";
     }
 
     // ------------------------------------------------------------- buendeln

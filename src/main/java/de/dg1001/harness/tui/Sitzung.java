@@ -459,7 +459,7 @@ public final class Sitzung {
 
             case "/karte" -> karte(rest);
 
-            case "/index" -> index(exec);
+            case "/index" -> index(exec, rest);
 
             case "/speichern" -> speichern(rest);
             case "/laden"     -> laden(rest);
@@ -484,7 +484,7 @@ public final class Sitzung {
             "/laden [n]           gespeicherte Sitzung zurueckholen",
             "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
             "/karte [stichwort]   Ueberblick ueber das Projekt",
-            "/index               Kurzbeschreibungen fuer die Karte erzeugen",
+            "/index [glob]        Kurzbeschreibungen erzeugen, wahlweise nur fuer einen Teil",
             "/frei                bash ohne Nachfrage ausfuehren",
             "/fragen              vor bash wieder nachfragen",
             "/verlauf             Groesse des Verlaufs",
@@ -531,14 +531,16 @@ public final class Sitzung {
      * Ein Durchlauf ueber ein groesseres Projekt dauert Minuten, und wer ihn
      * startet, will ihn auch wieder loswerden koennen.
      */
-    private void index(ExecutorService exec) throws IOException {
+    private void index(ExecutorService exec, String glob) throws IOException {
         var karte = new de.dg1001.harness.karte.Karte(ws);
         var indexer = new de.dg1001.harness.karte.Indexer(endpunkt, ws);
 
         anzeige.leerzeile();
         anzeige.statusStarten("beschreibt die Karte");
+        var muster = (glob == null || glob.isBlank()) ? null
+                : de.dg1001.harness.tools.GlobTool.muster(glob.trim());
         Future<de.dg1001.harness.karte.Indexer.Ergebnis> f =
-                exec.submit(() -> indexer.lauf(karte, anzeige::hinweis));
+                exec.submit(() -> indexer.lauf(karte, muster, anzeige::hinweis));
         tastaturWaehrendArbeit(f, indexer::brichAb);
 
         try {

@@ -101,6 +101,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 | `--kein-karte` | off | leave the `karte` tool out |
 | `--index` | — | write descriptions into the map, then exit |
+| `--muster <glob>` | — | with `--index`: describe only that part |
 
 Exit code is `0` only on an orderly finish.
 
@@ -187,7 +188,7 @@ copying still works.
 | `/neu` | drop the transcript and start over |
 | `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
 | `/karte [keyword]` | the project map, same view the model gets |
-| `/index` | have the model describe the project files |
+| `/index [glob]` | have the model describe the project files, optionally a part |
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
@@ -367,6 +368,52 @@ now fixed and pinned by checks:
 The first of those is the instructive one. It was not a crash and not a wrong
 answer — the map simply asserted a relationship that does not exist, in a form
 that reads exactly like the true ones next to it.
+
+### Does it pay at scale?
+
+Twelve runs in Django: three questions whose answers sit deep in the tree,
+two configurations, two repetitions. **All twelve answers were correct** in both
+configurations; only the effort differed.
+
+| | Turns | Tool calls | Wall clock |
+|---|---|---|---|
+| no map | 8.8 (6–12) | 10.0 (7–16) | 70 s (43–92) |
+| map (structure only) | 7.2 (4–11) | 8.5 (3–14) | 56 s (26–92) |
+
+Roughly a fifth fewer turns and a fifth less wall clock. Four of the six pairs
+favour the map, two go the other way, and the spread inside one configuration
+(6–12 turns) is still wider than the gap between them (1.6). At n=2 per cell
+this is a direction, not a result.
+
+The one thing worth putting next to the earlier small-repository numbers:
+
+| | 48 files | 3,050 files |
+|---|---|---|
+| no map | 6.0 turns | 8.8 turns |
+| map, structure only | 6.0 turns | 7.2 turns |
+
+**Structure bought nothing at 48 files and something at 3,050.** That is what
+the whole idea predicts — a map earns its keep where reading your way around
+stops being affordable — so it is at least coherent, on thin evidence.
+
+A hypothesis the runs suggest but do not establish: how well it works tracks
+how *specific* the search term is. `csrf` matches 23 of 3,050 files and gave
+the largest, most consistent gain (7→4 and 9→7 turns). `sql` matches 200 and
+`migration` 374; both were mixed. With a broad term the map degenerates into
+twenty files out of several hundred, ranked by in-degree — and the answer may
+simply not be among them. That would be worth testing properly.
+
+Not tested here: **descriptions at this scale.** Describing all of Django is
+373 requests, three to six hours on this hardware — an overnight job rather than
+an impossibility. The practical shape is `--index --muster 'django/db/**'`:
+109 files, 21 requests, about twenty minutes for the part you actually work in,
+with the rest of the map staying structural. The indexer says up front what it
+is about to cost.
+
+One caveat in the map's disfavour: Django is unusually well named.
+`django/middleware/csrf.py` already tells you everything, so descriptions have
+little left to add. A codebase full of `utils.py` and `helpers.py` is where they
+would matter, and that is untested.
 
 ### How it is built, and what it costs
 

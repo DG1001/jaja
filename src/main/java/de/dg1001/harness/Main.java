@@ -94,8 +94,10 @@ public final class Main {
         // Weiche, weil er weder Sitzung noch Aufgabe braucht -- nur das Modell.
         if (o.containsKey("index")) {
             Retry e = Retry.vorgabe(client, m -> System.err.println("[index] " + m));
+            var muster = o.containsKey("muster")
+                    ? de.dg1001.harness.tools.GlobTool.muster(o.get("muster")) : null;
             Indexer.Ergebnis erg = new Indexer(e, ws)
-                    .lauf(new Karte(ws), m -> System.err.println("[index] " + m));
+                    .lauf(new Karte(ws), muster, m -> System.err.println("[index] " + m));
             System.err.printf("[index] %d beschrieben, %d offen, %d Anfragen%s%n",
                     erg.beschrieben(), erg.offen(), erg.buendel(),
                     erg.abgebrochen() ? " (abgebrochen)" : "");
@@ -204,6 +206,8 @@ public final class Main {
               --kein-karte              das Werkzeug 'karte' weglassen
               --index                   Kurzbeschreibungen fuer die Karte erzeugen
                                         und beenden (fortsetzbar, sichert laufend)
+              --muster <glob>           mit --index: nur diesen Teil beschreiben,
+                                        z. B. --muster 'src/kern/**'
 
             AGENT.md (oder AGENTS.md) im Arbeitsbereich wird automatisch gelesen
             und ergaenzt den eingebauten Prompt um die Projektregeln.
