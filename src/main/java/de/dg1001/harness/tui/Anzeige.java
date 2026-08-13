@@ -157,7 +157,8 @@ public final class Anzeige implements Beobachter {
     private static String argument(ToolCall tc) {
         try {
             var m = Json.obj(Json.parse(tc.argumentsJson()));
-            for (String k : new String[]{"kommando", "pfad", "muster", "alt"}) {
+            for (String k : new String[]{"kommando", "pfad", "muster", "alt",
+                                         "datei", "stichwort"}) {
                 String v = Json.str(m.get(k));
                 if (v != null && !v.isBlank()) return v.replace("\n", "⏎");
             }

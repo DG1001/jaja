@@ -83,7 +83,7 @@ public final class ProbeTools {
 
         pruefe("Registry: Werkzeugreihenfolge stabil",
                String.join(",", r.specs().stream().map(s -> s.name()).toList()),
-               t -> t.equals("glob,grep,read,write,edit,bash"));
+               t -> t.equals("glob,grep,read,write,edit,bash,karte"));
 
         // ------------------------------------------------------------- write
         pruefe("write: legt Datei mit Verzeichnissen an",

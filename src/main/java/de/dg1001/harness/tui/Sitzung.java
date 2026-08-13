@@ -451,6 +451,8 @@ public final class Sitzung {
 
             case "/zeige", "/lies" -> zeige(rest);
 
+            case "/karte" -> karte(rest);
+
             case "/speichern" -> speichern(rest);
             case "/laden"     -> laden(rest);
 
@@ -473,6 +475,7 @@ public final class Sitzung {
             "/speichern [n]       Sitzung nach .harness/sitzung-<n>.json schreiben",
             "/laden [n]           gespeicherte Sitzung zurueckholen",
             "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
+            "/karte [stichwort]   Ueberblick ueber das Projekt",
             "/frei                bash ohne Nachfrage ausfuehren",
             "/fragen              vor bash wieder nachfragen",
             "/verlauf             Groesse des Verlaufs",
@@ -486,6 +489,30 @@ public final class Sitzung {
         };
         for (String z : zeilen)
             anzeige.zeile(z.isEmpty() ? "" : "  " + Terminal.GRAU + z + Terminal.NORMAL);
+    }
+
+    /**
+     * Zeigt die Quellenkarte.
+     *
+     * <p>Dasselbe, was das Modell ueber das Werkzeug bekommt — hilfreich, um
+     * zu sehen, womit es arbeitet, bevor man ihm eine Aufgabe stellt.
+     */
+    private void karte(String stichwort) {
+        try {
+            de.dg1001.harness.karte.Karte k = new de.dg1001.harness.karte.Karte(ws);
+            var s = k.auffrischen();
+            String wort = (stichwort == null || stichwort.isBlank()) ? null : stichwort.trim();
+            anzeige.leerzeile();
+            anzeige.zeile(k.uebersicht(k.suche(wort, null),
+                    wort == null ? "der Auswahl" : "'" + wort + "'"));
+            if (s.gelesen() > 0)
+                anzeige.zeile("  " + Terminal.GRAU + s.gelesen()
+                        + " Datei(en) neu eingelesen" + Terminal.NORMAL);
+            anzeige.leerzeile();
+        } catch (IOException | RuntimeException e) {
+            anzeige.zeile("  " + Terminal.ROT + "Karte nicht lesbar: " + e.getMessage()
+                          + Terminal.NORMAL);
+        }
     }
 
     /** Zeigt eine Datei aus dem Arbeitsbereich; Markdown wird gesetzt. */

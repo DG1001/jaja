@@ -20,8 +20,10 @@ public final class GlobTool implements Tool {
 
     static final int MAX_TREFFER = 300;
 
-    /** Verzeichnisse, die nie interessieren und die Ausgabe zumuellen wuerden. */
-    static final Set<String> UEBERSPRINGEN = Set.of(
+    /** Verzeichnisse, die nie interessieren und die Ausgabe zumuellen wuerden.
+     *  Oeffentlich, weil die Quellenkarte denselben Baum laeuft und es genau
+     *  eine Stelle geben soll, an der diese Politik steht. */
+    public static final Set<String> UEBERSPRINGEN = Set.of(
             ".git", ".venv", "venv", "__pycache__", "node_modules",
             ".harness", ".pytest_cache", "target", "build", ".mypy_cache");
 
@@ -50,7 +52,7 @@ public final class GlobTool implements Tool {
      * aber selbstverstaendlich so und meinen "alle, auch die oben". Deshalb
      * zusaetzlich die Fassung ohne den Praefix.
      */
-    static List<PathMatcher> muster(String glob) {
+    public static List<PathMatcher> muster(String glob) {
         List<PathMatcher> l = new ArrayList<>(2);
         l.add(FileSystems.getDefault().getPathMatcher("glob:" + glob));
         if (glob.startsWith("**/"))
@@ -58,7 +60,7 @@ public final class GlobTool implements Tool {
         return l;
     }
 
-    static boolean passt(List<PathMatcher> muster, Path rel) {
+    public static boolean passt(List<PathMatcher> muster, Path rel) {
         for (PathMatcher m : muster)
             if (m.matches(rel) || m.matches(rel.getFileName())) return true;
         return false;

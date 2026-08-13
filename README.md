@@ -99,6 +99,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--frei` | off | session: run `bash` without asking |
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
+| `--kein-karte` | off | leave the `karte` tool out |
 
 Exit code is `0` only on an orderly finish.
 
@@ -113,7 +114,7 @@ Main ──┬──> Sitzung ──> Anzeige + Eingabe + Terminal        (inter
        │       │
        └───────┴──> Agent ──┬──> ChatEndpunkt ──> Retry ──> ChatClient ──> /v1
                             │                          └── Json + Messages
-                            ├──> ToolRegistry ──> glob grep read write edit bash
+                            ├──> ToolRegistry ──> glob grep read write edit bash karte
                             │           │              └──> Workspace (confinement)
                             │           └──> Freigabe   (ask before bash)
                             ├──> Beobachter             (progress: stderr or Anzeige)
@@ -130,11 +131,12 @@ who — if anyone — approves a command.
 | `tools` | the six tools, `ToolRegistry`, `Spill` (oversized output handling) |
 | `ws` | `Workspace` — every path resolves through it, or not at all |
 | `agent` | `Agent`, `Transcript`, `Elision`, `ContextBudget`, `TokenSchaetzer` |
+| `karte` | the source map: `Scanner` (tree walk), `Karte` (store, ranking, rendering) |
 | `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung`, `Markdown` |
 
-### The six tools
+### The seven tools
 
-`glob` · `grep` · `read` · `write` · `edit` · `bash`
+`glob` · `grep` · `read` · `write` · `edit` · `bash` · `karte`
 
 Registration order is fixed and must stay that way. The tool list sits at the
 very front of every request; reorder it and the server's prefix cache misses
@@ -183,6 +185,7 @@ copying still works.
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
 | `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
+| `/karte [keyword]` | the project map, same view the model gets |
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
@@ -276,6 +279,84 @@ sharp edges that are easy to get wrong and unpleasant to debug:
   local hardware, so of course you keep typing. The text reappears at the next
   prompt, ready to edit; the newline is discarded, because sending should be a
   decision and not a timing accident.
+
+## The source map
+
+On anything bigger than a toy project the agent spends turns just finding its
+way: `glob`, then `grep`, then read three files before it opens the one that
+mattered. Each of those turns costs ten seconds to minutes on local hardware.
+
+`karte` answers that in one call, without reading a single file:
+
+```
+46 Dateien in der Karte · 44 Java, 2 Text
+
+src/main/java/de/dg1001/harness/ws/Workspace.java  74 Zeilen
+  class Workspace  class AusbruchFehler  wurzel()  aufloesen(String pfad)  … +1
+  ← Agent.java  Systemprompt.java  Scanner.java  Karte.java  Sitzung.java  … +11
+```
+
+Files are ordered by **in-degree** — how many other files reference them — so
+what the project is built around floats to the top. That is the poor relation
+of aider's PageRank, and it answers the same question in five lines that anyone
+can check. `stichwort` filters, `muster` takes a glob, `datei` gives one file
+with all its references both ways. `/karte` shows the same thing to you.
+
+**Does it pay?** One measured A/B against this repository, same model
+(DeepSeek-V4-Flash), same question — *where is the transcript elided when
+context runs short?* Both answers were correct:
+
+| | Turns | Tool calls | Wall clock |
+|---|---|---|---|
+| without `karte` | 6 | 7 | 61 s |
+| with `karte` | **3** | **4** | **48 s** |
+
+Half the turns. That is one run on one question, not a benchmark — but the
+mechanism is not subtle: it replaced a grep, a glob and two speculative reads.
+
+### How it is built, and what it costs
+
+Structure comes from **regular expressions per language**, not tree-sitter.
+tree-sitter would be more accurate and cover 130 languages, and it would be
+this project's first real dependency. Anything dynamic slips through — runtime
+imports, reflection, generated code — which is why the tool description tells
+the model the map is a hint, not a guarantee.
+
+Import strings are resolved to real project paths, which is the part that earns
+its keep: `from modelle.artikel import Artikel` becomes `modelle/artikel.py`,
+`import de.beispiel.hilfe.Rechner` becomes `de/beispiel/hilfe/Rechner.java`,
+`'./werkzeug.js'` resolves against the importing file's directory. Imports that
+resolve to nothing are third-party and drop out of the graph while staying
+visible in the file's raw import list.
+
+**Incremental, or it would be pointless.** Every call walks the tree — cheap,
+directory entries only — but a file is *read* only when its size or mtime
+differs from the stored entry. On this repository the first call reads 46 files,
+the second reads none and answers in 38 ms. There is a check for exactly this,
+because if it regressed you would only notice it as "somehow slower".
+
+It lives in `.harness/karte.json`. `.harness` is in the skip list, so the map
+does not index itself.
+
+**It is delivered as a tool and not appended to the prompt**, deliberately. The
+system prompt and the tool descriptions are the one part of the context that
+elision can never touch; a map living there would cost on every single turn and
+would push the run toward the context wall we spent a whole session fixing. As
+a tool result it costs only when used and can be elided afterwards like anything
+else.
+
+### Descriptions are the next step, not this one
+
+The map holds fields for a one-line description and keywords per file, and the
+tool shows them — but nothing writes them yet. That needs a model and an
+indexing pass, and it is worth building on a foundation that is already tested.
+
+The data model already handles the hard part: each file stores a content hash,
+and a description records which hash it was written for. When they diverge the
+description is **not shown** — only `[Beschreibung veraltet]` — because a
+description that no longer matches the file misleads the model more actively
+than no description at all. That is the one warning every write-up on this
+subject repeats, so it is designed in rather than bolted on.
 
 ## Project rules: `AGENT.md`
 
@@ -388,6 +469,7 @@ failure, which is all Maven needs.
 | `ProbeTools` | all six tools, path confinement, spilling |
 | `ProbeAgent` | budget, transcript, elision |
 | `ProbeSchleife` | the loop and approvals, against a scripted endpoint |
+| `ProbeKarte` | tree walk, import resolution, incrementality, staleness |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
 | `ProbeMarkdown` | headings, lists, tables, code fences, wrapping |
 | `Probe` (live) | round trip to a real server |
@@ -480,6 +562,7 @@ src/main/java/de/dg1001/harness/
   tools/                 the six tools, registry, spilling
   ws/Workspace.java      path confinement
   agent/                 loop, transcript, elision, budget, estimator
+  karte/                 source map: walk, store, ranking
   tui/                   terminal, line editor, display, session
 src/test/java/…          seven probe suites
 pom.xml                  Maven; no dependencies

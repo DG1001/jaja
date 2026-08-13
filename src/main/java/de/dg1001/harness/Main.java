@@ -89,7 +89,8 @@ public final class Main {
             System.err.println("[harness] Achtung: " + sp.warnung());
 
         if (amBildschirm) {
-            sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp);
+            sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
+                    !o.containsKey("kein-karte"));
             return;
         }
 
@@ -99,7 +100,8 @@ public final class Main {
         Retry endpunkt = Retry.vorgabe(client,
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
-        Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget, maxZuege, laut);
+        Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(!o.containsKey("kein-karte")),
+                                ws, budget, maxZuege, laut);
 
         long t0 = System.nanoTime();
         Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);
@@ -124,7 +126,7 @@ public final class Main {
      */
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen,
-                                Systemprompt.Ergebnis sp) throws Exception {
+                                Systemprompt.Ergebnis sp, boolean mitKarte) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -137,7 +139,7 @@ public final class Main {
             // wie im Stapelbetrieb nach stderr, faende sie sich mitten in der
             // Statuszeile wieder -- gemessen an einem Server, der nicht antwortete.
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
-            Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(), ws, budget,
+            Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(mitKarte), ws, budget,
                                     maxZuege, anzeige);
             if (sp.quelle() != null)
                 anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
@@ -185,6 +187,7 @@ public final class Main {
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
+              --kein-karte              das Werkzeug 'karte' weglassen
 
             AGENT.md (oder AGENTS.md) im Arbeitsbereich wird automatisch gelesen
             und ergaenzt den eingebauten Prompt um die Projektregeln.

@@ -69,6 +69,25 @@ public final class ProbeMessages {
                !schreibe(new AssistantMessage("nur Text", null, List.of()))
                        .contains("tool_calls"));
 
+        // -------------------------------------------------------- Denkbloecke
+        // Beobachtet an einem Server, der den Denkblock nach content schrieb:
+        // die Antwort begann mit Absaetzen Selbstgespraech und einem </think>.
+        pruefe("Denkblock im Inhalt wird abgeschnitten",
+               Messages.ohneDenkblock("ich ueberlege...</think>Die Antwort."), "Die Antwort.");
+        pruefe("mehrere Schlusszeichen: das letzte zaehlt",
+               Messages.ohneDenkblock("a</think>b</think>Antwort"), "Antwort");
+        pruefe("gewoehnlicher Text bleibt unangetastet",
+               Messages.ohneDenkblock("Ganz normale Antwort."), "Ganz normale Antwort.");
+        pruefe("null bleibt null", Messages.ohneDenkblock(null), null);
+        // Steht nach dem Schlusszeichen nichts, war alles Denken -- dann lieber
+        // etwas Unschoenes zeigen als eine leere Antwort.
+        pruefe("nur Denken: nichts wird weggeworfen",
+               Messages.ohneDenkblock("nur denken</think>   "), "nur denken</think>   ");
+        pruefe("gelesene Antwort ist bereits gefiltert",
+               Messages.lies(Json.parse(
+                   "{\"choices\":[{\"message\":{\"content\":\"denk</think>echt\"}}]}"))
+                       .message().content(), "echt");
+
         // ------------------------------------------------------------- lesen
         ChatResponse r = Messages.lies(Json.parse("""
                 {"choices":[{"message":{"content":"fertig","reasoning_content":"denk"},

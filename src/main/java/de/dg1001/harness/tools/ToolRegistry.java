@@ -40,15 +40,28 @@ public final class ToolRegistry {
      *  <p>Sortierung nach Arbeitsablauf, nicht nach Alphabet: erst schauen
      *  (glob, grep, read), dann aendern (write, edit), zuletzt das Universal-
      *  werkzeug (bash). Das ist reine Lesbarkeit fuer Menschen -- fuers Modell
-     *  zaehlt nur, dass sie sich nie aendert. */
-    public static ToolRegistry vorgabe() {
-        return new ToolRegistry()
+     *  zaehlt nur, dass sie sich nie aendert.
+     *
+     *  <p>karte kam spaeter dazu und steht deshalb hinten, nicht vorne bei den
+     *  anderen Schau-Werkzeugen: jede Einfuegung weiter vorn haette den
+     *  Praefix-Cache aller folgenden Werkzeuge verschoben. */
+    public static ToolRegistry vorgabe() { return vorgabe(true); }
+
+    /**
+     * @param mitKarte false laesst die Quellenkarte weg. Gibt es, weil die
+     *        veroeffentlichten Benchmarkzahlen mit sechs Werkzeugen gemessen
+     *        wurden — ohne diesen Schalter waere der Stand nicht mehr
+     *        nachstellbar.
+     */
+    public static ToolRegistry vorgabe(boolean mitKarte) {
+        ToolRegistry r = new ToolRegistry()
                 .fuegeHinzu(new GlobTool())
                 .fuegeHinzu(new GrepTool())
                 .fuegeHinzu(new ReadTool())
                 .fuegeHinzu(new WriteTool())
                 .fuegeHinzu(new EditTool())
                 .fuegeHinzu(new BashTool());
+        return mitKarte ? r.fuegeHinzu(new KarteTool()) : r;
     }
 
     public List<ToolSpec> specs() { return List.copyOf(specs); }

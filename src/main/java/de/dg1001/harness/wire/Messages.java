@@ -159,6 +159,28 @@ public final class Messages {
         return aus;
     }
 
+    /**
+     * Entfernt einen Denkblock, der im Inhalt gelandet ist.
+     *
+     * <p>Eigentlich gehoert er nach {@code reasoning_content}. Manche Server
+     * schreiben ihn trotzdem in {@code content} — beobachtet an einer Antwort,
+     * die mit mehreren Absaetzen Selbstgespraech begann und erst nach einem
+     * {@code </think>} die eigentliche Antwort brachte. Ungefiltert steht das
+     * dann im Protokoll, im Verlauf und vor den Augen des Nutzers.
+     *
+     * <p>Genommen wird alles nach dem <em>letzten</em> Schlusszeichen. Ein
+     * Text, der ueber Denkbloecke schreibt und das Zeichen woertlich enthaelt,
+     * wuerde dabei beschnitten — das ist selten genug und immer noch besser
+     * als seitenweise Selbstgespraech als Antwort auszuliefern.
+     */
+    static String ohneDenkblock(String inhalt) {
+        if (inhalt == null) return null;
+        int ende = inhalt.lastIndexOf("</think>");
+        if (ende < 0) return inhalt;
+        String rest = inhalt.substring(ende + "</think>".length()).strip();
+        return rest.isEmpty() ? inhalt : rest;      // nur Denken, kein Text: lieber alles behalten
+    }
+
     /** Liest {@code tool_calls} aus einer Nachricht. */
     private static List<ToolCall> werkzeugaufrufe(Object nachricht) {
         List<ToolCall> aufrufe = new ArrayList<>();
@@ -183,7 +205,7 @@ public final class Messages {
         Object c0  = choices.get(0);
         Object msg = Json.feld(c0, "message");
 
-        String inhalt = Json.str(Json.feld(msg, "content"));
+        String inhalt = ohneDenkblock(Json.str(Json.feld(msg, "content")));
 
         // vLLM nennt es reasoning_content, andere reasoning. Beide annehmen.
         String denken = Json.str(Json.feld(msg, "reasoning_content"));
