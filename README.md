@@ -326,8 +326,47 @@ and descriptions are modestly ahead of both — consistent with the idea that
 established by n=3.
 
 One honest caveat in the other direction: 48 files is a small repository, which
-is precisely where a model can afford to glob and read its way around. The case
-for a map is large projects, and that case is untested here.
+is precisely where a model can afford to glob and read its way around. So the
+map was pointed at a large one.
+
+### At scale: Django
+
+3,050 indexed files (2,928 Python), 7,751 resolved edges between them.
+
+| | |
+|---|---|
+| build from nothing | **0.80 s** |
+| second call, nothing changed | **0.37 s** |
+| after touching one file | one file re-read |
+| store on disk | 2.4 MB |
+
+That is the incrementality earning its keep: a project of this size stays
+answerable in under half a second per call, because the walk only stats
+directory entries and reads what actually moved.
+
+**Three defects surfaced that 48 files could never have shown**, all of them
+now fixed and pinned by checks:
+
+- **False edges from the standard library.** `from collections import
+  defaultdict` resolved to `django/contrib/gis/geos/collections.py`, and
+  `from uuid import UUID` to `django/db/models/functions/uuid.py` — because a
+  path *suffix* was enough to match. Suffix matching is right for a
+  package-style name like `django.core.exceptions`, where you cannot know which
+  source root it sits under. It is wrong for a bare `uuid`, which means the
+  standard library or a sibling. Single-segment imports now need an exact hit
+  against a sibling or the project root. Worse than the wrong edges themselves:
+  they inflated the in-degree of those files, so the ranking put them forward.
+- **Data files crowding out source.** `.txt`, `.json`, `.yml` and friends took
+  1,149 of the 4,000 slots — test fixtures and translations that carry no
+  definitions and no imports — and pushed 177 real Python files out of the map.
+  Only `.md` survives among the non-code formats.
+- **A cap that truncated in silence.** Hitting the 4,000-file limit produced a
+  map that looked complete. It now says so: `[unvollstaendig: beim Deckel von
+  4000 Dateien abgebrochen, es gibt mehr]`.
+
+The first of those is the instructive one. It was not a crash and not a wrong
+answer — the map simply asserted a relationship that does not exist, in a form
+that reads exactly like the true ones next to it.
 
 ### How it is built, and what it costs
 

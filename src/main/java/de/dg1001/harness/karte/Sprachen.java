@@ -72,8 +72,15 @@ public final class Sprachen {
             List.of(p("^\\s*(?:\\.|source)\\s+(?<modul>[\\w./-]+)")),
             '/', List.of(".sh", ".bash"));
 
-    /** Reiner Text: keine Definitionen, keine Importe, aber gezaehlt und gelistet. */
-    static final Sprache TEXT = new Sprache("Text", List.of(), List.of(), '/', List.of());
+    /**
+     * Markdown: keine Definitionen, keine Importe, aber lesenswert.
+     *
+     * <p>Andere Textformate stehen bewusst nicht mehr drin. An Django gemessen
+     * belegten .txt und Konsorten 1 149 von 4 000 Plaetzen — Pruefdaten und
+     * Uebersetzungen, die zur Orientierung nichts beitragen und dafuer
+     * Quelldateien aus der Karte verdraengten.
+     */
+    static final Sprache TEXT = new Sprache("Markdown", List.of(), List.of(), '/', List.of());
 
     private static final Map<String, Sprache> NACH_ENDUNG = Map.ofEntries(
             Map.entry(".py", PYTHON),
@@ -82,11 +89,7 @@ public final class Sprachen {
             Map.entry(".ts", JS), Map.entry(".tsx", JS),
             Map.entry(".go", GO),
             Map.entry(".sh", SHELL), Map.entry(".bash", SHELL),
-            Map.entry(".md", TEXT), Map.entry(".txt", TEXT),
-            Map.entry(".json", TEXT), Map.entry(".yml", TEXT), Map.entry(".yaml", TEXT),
-            Map.entry(".toml", TEXT), Map.entry(".xml", TEXT), Map.entry(".cfg", TEXT),
-            Map.entry(".ini", TEXT), Map.entry(".sql", TEXT), Map.entry(".html", TEXT),
-            Map.entry(".css", TEXT));
+            Map.entry(".md", TEXT));
 
     /** @return null, wenn die Endung nichts sagt — solche Dateien bleiben draussen. */
     public static Sprache fuer(String pfad) {

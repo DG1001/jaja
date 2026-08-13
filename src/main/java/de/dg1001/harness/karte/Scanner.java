@@ -46,11 +46,17 @@ public final class Scanner {
     private final Workspace ws;
     private int gelesen = 0;
     private int uebersprungen = 0;
+    private boolean deckelErreicht = false;
 
     public Scanner(Workspace ws) { this.ws = ws; }
 
     public int gelesen() { return gelesen; }
     public int uebersprungen() { return uebersprungen; }
+
+    /** Wurde der Durchlauf am Deckel abgeschnitten? Muss gesagt werden: eine
+     *  Karte, die stillschweigend ein Sechstel des Projekts weglaesst, sieht
+     *  aus wie eine vollstaendige. */
+    public boolean deckelErreicht() { return deckelErreicht; }
 
     /**
      * Baut die Karte neu auf Basis der alten.
@@ -67,7 +73,10 @@ public final class Scanner {
                         ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
-                if (neu.size() >= MAX_DATEIEN) return FileVisitResult.TERMINATE;
+                if (neu.size() >= MAX_DATEIEN) {
+                    deckelErreicht = true;
+                    return FileVisitResult.TERMINATE;
+                }
                 String rel = ws.wurzel().relativize(f).toString().replace('\\', '/');
 
                 Sprachen.Sprache sprache = Sprachen.fuer(rel);
@@ -192,11 +201,24 @@ public final class Scanner {
                                 Map<String, List<String>> nachDateiname) {
         if (roh == null || roh.isBlank() || sprache == null) return null;
 
+        // Ob ein Pfadende genuegt oder der Pfad genau stimmen muss.
+        //
+        // Ein mehrteiliger Name wie de.dg1001.wire.Json ist spezifisch genug,
+        // dass ein Pfadende reicht -- man weiss ja nicht, unter welchem
+        // Quellverzeichnis das Paket liegt. Ein einteiliger Name ist es nicht:
+        // 'collections.py' als Ende trifft django/contrib/gis/geos/collections.py,
+        // obwohl 'import collections' die Standardbibliothek meint. Dasselbe gilt
+        // fuer aufgeloeste relative Pfade -- die stehen bereits vollstaendig da.
+        boolean genau = !roh.contains(String.valueOf(sprache.modulTrenner()))
+                     || roh.startsWith(".");
+
         for (String kandidat : kandidaten(roh, sprache, eigenerPfad)) {
             List<String> moegliche = nachDateiname.get(dateiname(kandidat));
             if (moegliche == null) continue;
-            for (String p : moegliche)
-                if (p.equals(kandidat) || p.endsWith("/" + kandidat)) return p;
+            for (String p : moegliche) {
+                if (p.equals(kandidat)) return p;
+                if (!genau && p.endsWith("/" + kandidat)) return p;
+            }
         }
         return null;
     }
@@ -218,6 +240,26 @@ public final class Scanner {
         }
 
         String pfad = roh.replace(sprache.modulTrenner(), '/');
+
+        // Einteilige Namen sind fast immer Fremdcode: 'import uuid' meint die
+        // Standardbibliothek, nicht irgendeine uuid.py fuenf Verzeichnisse
+        // weiter. Gemessen an Django, wo 'from collections import defaultdict'
+        // auf django/contrib/gis/geos/collections.py zeigte -- eine erfundene
+        // Kante, die obendrein den Eingangsgrad dieser Datei aufblies.
+        // Erlaubt sind deshalb nur Nachbardateien und die Projektwurzel.
+        if (!pfad.contains("/")) {
+            String basis = eigenerPfad.contains("/")
+                    ? eigenerPfad.substring(0, eigenerPfad.lastIndexOf('/') + 1) : "";
+            for (String e : sprache.endungen()) aus.add(basis + pfad + e);
+            if (!basis.isEmpty())
+                for (String e : sprache.endungen()) aus.add(pfad + e);
+            if (sprache.modulTrenner() == '.') {
+                aus.add(basis + pfad + "/__init__.py");
+                aus.add(pfad + "/__init__.py");
+            }
+            return aus;
+        }
+
         for (String e : sprache.endungen()) aus.add(pfad + e);
         // Python-Pakete: modelle.artikel kann auch modelle/artikel/__init__.py sein
         if (sprache.modulTrenner() == '.') aus.add(pfad + "/__init__.py");

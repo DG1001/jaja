@@ -37,6 +37,7 @@ public final class Karte {
 
     private final Workspace ws;
     private final Path datei;
+    private boolean unvollstaendig = false;
     private Map<String, Quelldatei> dateien = new LinkedHashMap<>();
 
     public Karte(Workspace ws) {
@@ -127,6 +128,7 @@ public final class Karte {
         laden();
         Scanner s = new Scanner(ws);
         dateien = s.aktualisiere(dateien);
+        unvollstaendig = s.deckelErreicht();
         sichern();
         return s;
     }
@@ -233,6 +235,9 @@ public final class Karte {
         b.append(dateien.size()).append(" Dateien in der Karte · ")
          .append(String.join(", ", teile));
         if (auswahl.size() != dateien.size()) b.append(" · ").append(auswahl.size()).append(" passen");
+        if (unvollstaendig)
+            b.append("\n[unvollstaendig: beim Deckel von ").append(Scanner.MAX_DATEIEN)
+             .append(" Dateien abgebrochen, es gibt mehr]");
         return b.append("\n\n").toString();
     }
 

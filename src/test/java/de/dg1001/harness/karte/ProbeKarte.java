@@ -50,6 +50,8 @@ public final class ProbeKarte {
                     return betrag
                 """);
         schreibe(tmp, "konfig.py", "WERT = 1\n");
+        // Namensgleiche Datei tief im Baum: darf 'import konfig' nicht anziehen.
+        schreibe(tmp, "tief/im/baum/konfig.py", "ANDERS = 2\n");
         schreibe(tmp, "kasse/beleg.py", """
                 from preise.rabatt import staffel
                 import konfig
@@ -94,7 +96,7 @@ public final class ProbeKarte {
         Map<String, Quelldatei> d = k.dateien();
 
         // --------------------------------------------------------- Erfassung
-        pruefe("erfasst die Quelldateien", d.size(), 8);
+        pruefe("erfasst die Quelldateien", d.size(), 9);
         pruefe("ueberspringt .venv", !d.containsKey(".venv/heimlich.py"));
         pruefe("ueberspringt node_modules", !d.containsKey("node_modules/x/y.js"));
         pruefe("ignoriert unbekannte Endungen", !d.containsKey("daten.bin_unbekannt"));
@@ -138,6 +140,16 @@ public final class ProbeKarte {
         pruefe("JS: relativer Pfad wird aufgeloest",
                js.verweise().contains("web/werkzeug.js"));
 
+        // An Django gemessen: 'from collections import defaultdict' meint die
+        // Standardbibliothek, landete aber auf django/contrib/gis/geos/collections.py,
+        // weil ein Pfadende genuegte. Einteilige Namen brauchen deshalb einen
+        // genauen Treffer -- Nachbardatei oder Projektwurzel.
+        pruefe("einteiliger Import trifft keine tief liegende Namensgleiche",
+               d.get("preise/rabatt.py").verweise().stream()
+                       .noneMatch(v -> v.startsWith("tief/")));
+        pruefe("einteiliger Import findet aber die Datei in der Wurzel",
+               d.get("preise/rabatt.py").verweise().contains("konfig.py"));
+
         Map<String, List<String>> rueck = k.rueckverweise();
         pruefe("Rueckverweise passen zu den Vorwaertsverweisen",
                rueck.get("modelle/artikel.py"), List.of("preise/rabatt.py"));
@@ -151,9 +163,9 @@ public final class ProbeKarte {
         // ------------------------------------------------------ inkrementell
         Karte k2 = new Karte(ws);
         Scanner s2 = k2.auffrischen();
-        pruefe("erster Lauf liest alles", s1.gelesen(), 8);
+        pruefe("erster Lauf liest alles", s1.gelesen(), 9);
         pruefe("zweiter Lauf liest nichts", s2.gelesen(), 0);
-        pruefe("zweiter Lauf kennt trotzdem alles", k2.dateien().size(), 8);
+        pruefe("zweiter Lauf kennt trotzdem alles", k2.dateien().size(), 9);
 
         schreibe(tmp, "konfig.py", "WERT = 1\nZWEITER = 2\n");
         Karte k3 = new Karte(ws);
