@@ -85,6 +85,7 @@ public final class Karte {
         liste(w, "definitionen", q.definitionen());
         liste(w, "rohImporte", q.rohImporte());
         liste(w, "verweise", q.verweise());
+        liste(w, "importierteNamen", q.importierteNamen());
         w.textFeld("beschreibung", q.beschreibung());
         if (!q.stichworte().isEmpty()) liste(w, "stichworte", q.stichworte());
         w.textFeld("beschreibungFuerHash", q.beschreibungFuerHash());
@@ -107,6 +108,7 @@ public final class Karte {
                 Json.str(Json.feld(o, "sprache")),
                 Json.num(Json.feld(o, "zeilen"), 0),
                 texte(o, "definitionen"), texte(o, "rohImporte"), texte(o, "verweise"),
+                texte(o, "importierteNamen"),
                 Json.str(Json.feld(o, "beschreibung")),
                 texte(o, "stichworte"),
                 Json.str(Json.feld(o, "beschreibungFuerHash")));
@@ -181,7 +183,200 @@ public final class Karte {
         return q.beschreibungGueltig() && q.beschreibung().toLowerCase().contains(s);
     }
 
+    // --------------------------------------------------------- Doppeltes
+
+    /**
+     * Namen, die an mehr als einer Stelle definiert werden.
+     *
+     * <p>Die haeufigste Art, wie ein langer Agentenlauf auf gruener Wiese
+     * schiefgeht — und wir haben den Beleg im eigenen Pruefstand: ein Modell
+     * legte {@code STANDARD = Register()} wie verlangt an und dann ein zweites
+     * in {@code __init__.py}, das den Import ueberschattete. Alles Sichtbare
+     * funktionierte, die Kommandozeile, die eigenen Tests — nur der Pfad, den
+     * die Aufgabe ausdruecklich nannte, blieb fuer immer leer. Drei Punkte
+     * verloren an etwas, das eine Liste doppelter Namen sofort gezeigt haette.
+     *
+     * <p>Ab sechs Fundstellen gilt ein Name als Konvention und nicht als
+     * Versehen: {@code save} in vierzig Modellen ist kein Fehler.
+     */
+    /**
+     * Ein Name an zwei Stellen, von denen eine die andere importiert.
+     *
+     * <p>Das ist der gefaehrliche Fall und der einzige, der sich von blosser
+     * Namensgleichheit unterscheiden laesst. Django hat 1 288 doppelte Namen —
+     * fast alle Zufall. Ueberschattet wird nur dort, wo eine Datei die andere
+     * einbindet und den Namen erneut belegt; dann gewinnt die spaetere Zuweisung
+     * und der Import laeuft ins Leere, ohne dass irgendetwas bricht.
+     */
+    public Map<String, List<String>> ueberschattet() {
+        Map<String, List<String>> aus = new TreeMap<>();
+        doppelte().forEach((name, wo) -> {
+            for (String a : wo)
+                for (String b : wo) {
+                    if (a.equals(b)) continue;
+                    Quelldatei qb = dateien.get(b);
+                    // Nicht: b bindet irgendetwas aus a ein. Sondern: b holt
+                    // genau diesen Namen herein und belegt ihn danach neu.
+                    // Der Unterschied ist gross -- bei Django meldete die
+                    // grobe Fassung 437 Faelle, fast alle nur Namensgleichheit
+                    // zwischen Dateien, die sich zufaellig kennen.
+                    if (qb != null && qb.verweise().contains(a)
+                            && qb.importierteNamen().contains(name)) {
+                        aus.put(name, wo);
+                        return;
+                    }
+                }
+        });
+        return aus;
+    }
+
+    public Map<String, List<String>> doppelte() {
+        Map<String, List<String>> nachName = new TreeMap<>();
+        for (Quelldatei q : dateien.values())
+            for (String d : q.definitionen()) {
+                String n = nameVon(d);
+                if (n == null) continue;
+                List<String> wo = nachName.computeIfAbsent(n, k -> new ArrayList<>());
+                if (!wo.contains(q.pfad())) wo.add(q.pfad());
+            }
+        Map<String, List<String>> aus = new TreeMap<>();
+        nachName.forEach((n, wo) -> { if (wo.size() >= 2 && wo.size() <= 5) aus.put(n, wo); });
+        return aus;
+    }
+
+    /** Namen, die ueberall vorkommen und nichts bedeuten. */
+    private static final java.util.Set<String> ALLTAEGLICH = java.util.Set.of(
+            "main", "init", "setup", "teardown", "close", "open", "read", "write",
+            "run", "start", "stop", "get", "set", "add", "remove", "clear", "size",
+            "name", "value", "toString", "equals", "hashCode", "clone", "handle",
+            "process", "execute", "call", "apply", "build", "create", "parse",
+            "format", "load", "save", "update", "delete", "check", "validate",
+            "reset", "next", "count", "keys", "values", "items", "copy", "deconstruct");
+
+    /** Aus "def staffel(menge)" wird staffel; null, wenn uninteressant. */
+    static String nameVon(String signatur) {
+        // Methoden koennen nichts ueberschatten: sie leben im Klassenraum.
+        // Die Einrueckung sieht die Regex nicht, das erste Argument schon --
+        // damit faellt Djangos Client.login heraus, das sonst gegen das
+        // importierte login gemeldet wurde.
+        if (signatur.contains("(self") || signatur.contains("(cls")) return null;
+
+        String s = signatur;
+        for (String art : new String[]{"async def ", "def ", "class ", "record ", "interface ",
+                                       "enum ", "function ", "async function ", "const ",
+                                       "let ", "func ", "type "})
+            if (s.startsWith(art)) { s = s.substring(art.length()); break; }
+        int klammer = s.indexOf('(');
+        if (klammer >= 0) s = s.substring(0, klammer);
+        s = s.strip();
+        if (s.length() < 4 || s.startsWith("_") || s.startsWith("test")) return null;
+        return ALLTAEGLICH.contains(s) || ALLTAEGLICH.contains(s.toLowerCase()) ? null : s;
+    }
+
+    /** Als Text: erst die gefaehrlichen, dann der Rest. */
+    public String doppelteAlsText() {
+        Map<String, List<String>> gefaehrlich = ueberschattet();
+        Map<String, List<String>> alle = doppelte();
+        if (alle.isEmpty()) return "Kein Name wird an zwei Stellen definiert.";
+
+        StringBuilder b = new StringBuilder();
+        if (!gefaehrlich.isEmpty()) {
+            b.append(gefaehrlich.size()).append(" Name(n) werden ueberschattet — eine Datei "
+                    + "definiert neu, was sie selbst importiert:\n\n");
+            for (var e : gefaehrlich.entrySet())
+                b.append(String.format("  %-24s %s%n", e.getKey(),
+                        kurzListe(kurz(e.getValue(), kurznamen()), 4)));
+            b.append('\n');
+        }
+
+        Map<String, List<String>> rest = new TreeMap<>(alle);
+        rest.keySet().removeAll(gefaehrlich.keySet());
+        if (!rest.isEmpty()) {
+            b.append(rest.size()).append(" weitere Name(n) an mehreren Stellen — meist Zufall:\n\n");
+            int n = 0;
+            for (var e : rest.entrySet()) {
+                if (n++ >= 30 || b.length() > MAX_ZEICHEN) break;
+                b.append(String.format("  %-24s %s%n", e.getKey(),
+                        kurzListe(kurz(e.getValue(), kurznamen()), 4)));
+            }
+            if (n < rest.size()) b.append("  [").append(rest.size() - n).append(" weitere]\n");
+        }
+        return b.toString();
+    }
+
     // -------------------------------------------------------------- Ausgabe
+
+    /** Ab so vielen Treffern lohnt die Datei-Liste nicht mehr. */
+    static final int AB_HIER_VERZEICHNISSE = 25;
+
+    /**
+     * Bei vielen Treffern: nach Verzeichnis zusammenfassen statt abschneiden.
+     *
+     * <p>Der gemessene Schwachpunkt. In Django trifft 'migration' 374 von 3 050
+     * Dateien; gezeigt wurden zwanzig davon, sortiert nach globalem
+     * Eingangsgrad — also die zentralsten Dateien des Projekts, die zufaellig
+     * das Wort enthalten, nicht die zentralsten Migrationsdateien. Genau dort
+     * verlor die Karte ihre Laeufe.
+     *
+     * <p>Zwoelf Verzeichnisse mit Anzahl und Hauptdateien sind dieselbe Menge
+     * Text, aber die richtige Form: das Modell grenzt in einem weiteren Schritt
+     * ein, statt zu raten.
+     */
+    private String nachVerzeichnis(List<Quelldatei> auswahl, String wonach) {
+        Map<String, List<Quelldatei>> je = new TreeMap<>();
+        for (Quelldatei q : auswahl) je.computeIfAbsent(verzeichnis(q.pfad()),
+                                                        k -> new ArrayList<>()).add(q);
+
+        // Nach Gewicht, nicht nach Menge. Die reine Anzahl belohnt genau das
+        // Falsche: bei 'migration' in Django belegten Testfixtures acht der
+        // zwoelf Plaetze, waehrend django/db/migrations/ dazwischen unterging --
+        // hundert Dateien, auf die niemand verweist, schlugen vierzehn, die den
+        // Kern ausmachen. Gezaehlt wird deshalb, wie oft auf die Dateien eines
+        // Verzeichnisses verwiesen wird.
+        Map<String, List<String>> rueck = rueckverweise();
+        Map<String, Integer> gewicht = new TreeMap<>();
+        je.forEach((verz, drin) -> gewicht.put(verz, drin.stream()
+                .mapToInt(q -> rueck.getOrDefault(q.pfad(), List.of()).size()).sum()));
+
+        List<Map.Entry<String, List<Quelldatei>>> sortiert = new ArrayList<>(je.entrySet());
+        sortiert.sort(Comparator
+                .comparingInt((Map.Entry<String, List<Quelldatei>> e) -> -gewicht.get(e.getKey()))
+                .thenComparingInt(e -> -e.getValue().size())
+                .thenComparing(Map.Entry::getKey));
+
+        StringBuilder b = new StringBuilder(kopf(auswahl));
+        b.append(auswahl.size()).append(" Treffer fuer ").append(wonach)
+         .append(" — zu viele fuer eine Liste, deshalb nach Verzeichnis:\n\n");
+
+        int gezeigt = 0;
+        for (var e : sortiert) {
+            if (gezeigt >= 15 || b.length() > MAX_ZEICHEN) break;
+            List<Quelldatei> drin = new ArrayList<>(e.getValue());
+            drin.sort(Comparator.comparingInt(
+                    q -> -rueck.getOrDefault(q.pfad(), List.of()).size()));
+            b.append(String.format("%-40s %4d  ", kappe(e.getKey() + "/", 40), drin.size()));
+            b.append(kurzListe(drin.subList(0, Math.min(3, drin.size())).stream()
+                            .map(q -> dateiname(q.pfad())).toList(), 3));
+            b.append('\n');
+            gezeigt++;
+        }
+        if (gezeigt < sortiert.size())
+            b.append("[").append(sortiert.size() - gezeigt).append(" weitere Verzeichnisse]\n");
+
+        b.append("\nWeiter mit muster, z. B. muster=\"").append(sortiert.get(0).getKey())
+         .append("/**\"\n");
+        return b.toString();
+    }
+
+    private static String dateiname(String pfad) {
+        int i = pfad.lastIndexOf('/');
+        return i < 0 ? pfad : pfad.substring(i + 1);
+    }
+
+    private static String verzeichnis(String pfad) {
+        int i = pfad.lastIndexOf('/');
+        return i < 0 ? "." : pfad.substring(0, i);
+    }
 
     /** Uebersicht: eine Datei je Block, gedeckelt. */
     public String uebersicht(List<Quelldatei> auswahl, String wonach) {
@@ -190,6 +385,8 @@ public final class Karte {
         if (auswahl.isEmpty())
             return "Keine Datei passt zu " + wonach + ". Insgesamt " + dateien.size()
                  + " Dateien in der Karte.";
+
+        if (auswahl.size() > AB_HIER_VERZEICHNISSE) return nachVerzeichnis(auswahl, wonach);
 
         Map<String, List<String>> rueck = rueckverweise();
         Map<String, String> namen = kurznamen();
@@ -204,6 +401,24 @@ public final class Karte {
         if (gezeigt < auswahl.size())
             b.append("[").append(auswahl.size() - gezeigt).append(" weitere — 'stichwort' "
                     + "oder 'muster' enger fassen, oder 'datei' fuer eine einzelne]\n");
+
+        // Ungefragter Hinweis, aber nur wenn er ueberschaubar bleibt. In einem
+        // jungen Projekt sind zwei gleiche Namen fast immer ein Versehen; in
+        // einem gewachsenen sind sie Konvention und der Hinweis waere Laerm.
+        // Ungefragt gemeldet wird nur die Ueberschattung, und die immer: sie ist
+        // kein Geschmacksfall, sondern fast sicher ein Versehen.
+        Map<String, List<String>> gefaehrlich = ueberschattet();
+        if (!gefaehrlich.isEmpty()) {
+            b.append('\n');
+            int n = 0;
+            for (var e : gefaehrlich.entrySet()) {
+                if (n++ >= 3) { b.append("[").append(gefaehrlich.size() - 3)
+                        .append(" weitere — karte mit doppelte=true]\n"); break; }
+                b.append("Achtung: ").append(e.getKey()).append(" wird in ")
+                 .append(String.join(" und ", kurz(e.getValue(), kurznamen())))
+                 .append(" definiert — eine davon importiert die andere.\n");
+            }
+        }
         return b.toString();
     }
 

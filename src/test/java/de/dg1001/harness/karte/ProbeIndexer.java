@@ -158,7 +158,7 @@ public final class ProbeIndexer {
             for (Quelldatei q : k.dateien().values())
                 k.setze(new Quelldatei(q.pfad(), q.groesse(), q.mtime(), q.hash(), q.sprache(),
                         q.zeilen(), q.definitionen(), q.rohImporte(), q.verweise(),
-                        null, List.of(), null));
+                        q.importierteNamen(), null, List.of(), null));
             k.sichern();
 
             Skript s = new Skript(true, "ignoriert");
@@ -196,7 +196,7 @@ public final class ProbeIndexer {
             for (Quelldatei q : k.dateien().values())
                 k.setze(new Quelldatei(q.pfad(), q.groesse(), q.mtime(), q.hash(), q.sprache(),
                         q.zeilen(), q.definitionen(), q.rohImporte(), q.verweise(),
-                        null, List.of(), null));
+                        q.importierteNamen(), null, List.of(), null));
             k.sichern();
 
             Indexer i = new Indexer(new Skript(false, "[]"), ws);
@@ -214,7 +214,7 @@ public final class ProbeIndexer {
 
     private static Quelldatei attrappe(String pfad, int groesse) {
         return new Quelldatei(pfad, groesse, "1", "h", "Python", 10,
-                List.of("def x()"), List.of(), List.of(), null, List.of(), null);
+                List.of("def x()"), List.of(), List.of(), List.of(), null, List.of(), null);
     }
 
     private static int zaehleBeschriebene(Karte k) {

@@ -127,9 +127,29 @@ public final class Scanner {
                 treffer(text, sprache.definitionen(), true),
                 treffer(text, sprache.importe(), false),
                 List.of(),
+                namenAus(text, sprache),
                 vorher == null ? null : vorher.beschreibung(),
                 vorher == null ? List.of() : vorher.stichworte(),
                 vorher == null ? null : vorher.beschreibungFuerHash());
+    }
+
+    /** Die einzeln importierten Namen: aus 'from a import b, c' werden b und c. */
+    private static List<String> namenAus(String text, Sprachen.Sprache sprache) {
+        Set<String> aus = new LinkedHashSet<>();
+        for (Pattern p : sprache.importierteNamen()) {
+            Matcher m = p.matcher(text);
+            while (m.find() && aus.size() < 300) {
+                String roh = gruppe(m, "namen");
+                if (roh == null) continue;
+                for (String t : roh.split(",")) {
+                    String n = t.strip();
+                    int als = n.indexOf(" as ");
+                    if (als > 0) n = n.substring(als + 4).strip();   // 'x as y' bindet y
+                    if (!n.isEmpty() && !n.equals("*")) aus.add(n);
+                }
+            }
+        }
+        return new ArrayList<>(aus);
     }
 
     /** @param alsSignatur true fuer Definitionen (art + name + args), sonst nur die Modulgruppe */

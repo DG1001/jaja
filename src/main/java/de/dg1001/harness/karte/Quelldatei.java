@@ -26,7 +26,7 @@ import java.util.List;
 public record Quelldatei(String pfad, int groesse, String mtime, String hash,
                          String sprache, int zeilen,
                          List<String> definitionen, List<String> rohImporte,
-                         List<String> verweise,
+                         List<String> verweise, List<String> importierteNamen,
                          String beschreibung, List<String> stichworte,
                          String beschreibungFuerHash) {
 
@@ -34,6 +34,7 @@ public record Quelldatei(String pfad, int groesse, String mtime, String hash,
         definitionen = List.copyOf(definitionen);
         rohImporte   = List.copyOf(rohImporte);
         verweise     = List.copyOf(verweise);
+        importierteNamen = importierteNamen == null ? List.of() : List.copyOf(importierteNamen);
         stichworte   = stichworte == null ? List.of() : List.copyOf(stichworte);
     }
 
@@ -51,11 +52,12 @@ public record Quelldatei(String pfad, int groesse, String mtime, String hash,
     /** Neue Verweise setzen, ohne den Rest anzufassen. */
     public Quelldatei mitVerweisen(List<String> neu) {
         return new Quelldatei(pfad, groesse, mtime, hash, sprache, zeilen,
-                definitionen, rohImporte, neu, beschreibung, stichworte, beschreibungFuerHash);
+                definitionen, rohImporte, neu, importierteNamen,
+                beschreibung, stichworte, beschreibungFuerHash);
     }
 
     public Quelldatei mitBeschreibung(String text, List<String> worte) {
         return new Quelldatei(pfad, groesse, mtime, hash, sprache, zeilen,
-                definitionen, rohImporte, verweise, text, worte, hash);
+                definitionen, rohImporte, verweise, importierteNamen, text, worte, hash);
     }
 }

@@ -28,6 +28,7 @@ public final class Sprachen {
      * @param endungen     womit Modulnamen zu Dateien werden
      */
     public record Sprache(String name, List<Pattern> definitionen, List<Pattern> importe,
+                          List<Pattern> importierteNamen,
                           char modulTrenner, List<String> endungen) {}
 
     private Sprachen() {}
@@ -35,10 +36,19 @@ public final class Sprachen {
     private static Pattern p(String s) { return Pattern.compile(s, Pattern.MULTILINE); }
 
     static final Sprache PYTHON = new Sprache("Python",
-            List.of(p("^\\s*(?<art>async def|def|class)\\s+(?<name>\\w+)\\s*(?<args>\\([^)]*\\))?")),
+            List.of(p("^\\s*(?<art>async def|def|class)\\s+(?<name>\\w+)\\s*(?<args>\\([^)]*\\))?"),
+                    // Zuweisungen auf Modulebene gehoeren zur Aussenflaeche eines
+                    // Moduls -- und sind die Stelle, an der Ueberschattung
+                    // entsteht: STANDARD = Register() ist keine Definition im
+                    // Sinne von def/class und fiel deshalb durch.
+                    p("^(?<name>[A-Za-z]\\w*)\\s*=\\s*[^=\\n]")),
             // import a.b.c  /  from a.b import c  /  from . import c
             List.of(p("^\\s*from\\s+(?<modul>[\\w.]+)\\s+import\\b"),
                     p("^\\s*import\\s+(?<modul>[\\w.]+)")),
+            // Welche Namen hereingeholt werden -- fuer die Ueberschattung.
+            // Kein \\s in der Zeichenklasse: das schliesst den Zeilenumbruch ein,
+            // und der Ausdruck frisst dann ueber das Zeilenende hinaus weiter.
+            List.of(p("^\\s*from\\s+[\\w.]+\\s+import\\s+(?<namen>[\\w,*() ]+)")),
             '.', List.of(".py"));
 
     static final Sprache JAVA = new Sprache("Java",
@@ -50,6 +60,7 @@ public final class Sprachen {
                     + "|default\\s+|abstract\\s+)*[\\w<>\\[\\],.?\\s]+?\\s(?<name>\\w+)\\s*"
                     + "(?<args>\\([^)]*\\))\\s*(?:throws [\\w,.\\s]+)?[{;]")),
             List.of(p("^\\s*import\\s+(?:static\\s+)?(?<modul>[\\w.]+)\\s*;")),
+            List.of(p("^\\s*import\\s+(?:static\\s+)?[\\w.]*?\\.(?<namen>\\w+)\\s*;")),
             '.', List.of(".java"));
 
     static final Sprache JS = new Sprache("JavaScript",
@@ -59,17 +70,20 @@ public final class Sprachen {
                     + "(?<args>\\([^)]*\\))\\s*=>")),
             List.of(p("\\bfrom\\s+['\"](?<modul>[^'\"]+)['\"]"),
                     p("\\brequire\\(\\s*['\"](?<modul>[^'\"]+)['\"]\\s*\\)")),
+            List.of(p("^\\s*import\\s+\\{(?<namen>[^}]+)\\}\\s*from")),
             '/', List.of(".js", ".mjs", ".ts", ".tsx", ".jsx"));
 
     static final Sprache GO = new Sprache("Go",
             List.of(p("^(?<art>func)\\s+(?:\\([^)]*\\)\\s*)?(?<name>\\w+)\\s*(?<args>\\([^)]*\\))"),
                     p("^(?<art>type)\\s+(?<name>\\w+)\\s")),
             List.of(p("^\\s*(?:import\\s+)?(?:\\w+\\s+)?\"(?<modul>[\\w./-]+)\"")),
+            List.of(),
             '/', List.of(".go"));
 
     static final Sprache SHELL = new Sprache("Shell",
             List.of(p("^\\s*(?:function\\s+)?(?<name>\\w+)\\s*\\(\\)\\s*\\{")),
             List.of(p("^\\s*(?:\\.|source)\\s+(?<modul>[\\w./-]+)")),
+            List.of(),
             '/', List.of(".sh", ".bash"));
 
     /**
@@ -80,7 +94,7 @@ public final class Sprachen {
      * Uebersetzungen, die zur Orientierung nichts beitragen und dafuer
      * Quelldateien aus der Karte verdraengten.
      */
-    static final Sprache TEXT = new Sprache("Markdown", List.of(), List.of(), '/', List.of());
+    static final Sprache TEXT = new Sprache("Markdown", List.of(), List.of(), List.of(), '/', List.of());
 
     private static final Map<String, Sprache> NACH_ENDUNG = Map.ofEntries(
             Map.entry(".py", PYTHON),

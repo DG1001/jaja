@@ -188,8 +188,8 @@ public final class ProbeKarte {
         // Inhalt aendern -> derselbe Eintrag mit neuem Hash
         Quelldatei geaendert = new Quelldatei(mitText.pfad(), mitText.groesse(), mitText.mtime(),
                 "anderer-hash", mitText.sprache(), mitText.zeilen(), mitText.definitionen(),
-                mitText.rohImporte(), mitText.verweise(), mitText.beschreibung(),
-                mitText.stichworte(), mitText.beschreibungFuerHash());
+                mitText.rohImporte(), mitText.verweise(), mitText.importierteNamen(),
+                mitText.beschreibung(), mitText.stichworte(), mitText.beschreibungFuerHash());
         pruefe("nach Aenderung gilt die Beschreibung nicht mehr", !geaendert.beschreibungGueltig());
         pruefe("und sie ist als veraltet erkennbar", geaendert.beschreibungVeraltet());
 
@@ -239,6 +239,78 @@ public final class ProbeKarte {
         pruefe("kaputtes Muster stuerzt nicht ab",
                werkzeug(r, ws, "{\"muster\":\"[unfertig\"}").contains("nicht lesbar"));
 
+        // -------------------------------------------------- Ueberschattung
+        // Der gemessene Ausfall aus dem eigenen Pruefstand: ein Modell legte
+        // STANDARD an und dann ein zweites in __init__.py, das den Import
+        // ueberschattete. Alles Sichtbare lief weiter, nur der Pfad, den die
+        // Aufgabe nannte, blieb leer. Drei Punkte an etwas verloren, das hier
+        // in einer Zeile steht.
+        {
+            Path w = Files.createTempDirectory("jaja-schatten");
+            Workspace ws2 = new Workspace(w);
+            schreibe(w, "paket/kern.py", "class Register:\n    pass\n\nSTANDARD = Register()\n");
+            schreibe(w, "paket/__init__.py",
+                     "from paket.kern import Register, STANDARD\n\nSTANDARD = Register()\n");
+            Karte ks = new Karte(ws2);
+            ks.auffrischen();
+
+            pruefe("Modulzuweisung zaehlt als Definition",
+                   ks.dateien().get("paket/kern.py").definitionen().contains("STANDARD"));
+            pruefe("importierte Namen werden erfasst",
+                   ks.dateien().get("paket/__init__.py").importierteNamen().contains("STANDARD"));
+            pruefe("Ueberschattung wird erkannt", ks.ueberschattet().containsKey("STANDARD"));
+            pruefe("und ungefragt gemeldet",
+                   ks.uebersicht(ks.suche(null, null), "x").contains("Achtung: STANDARD"));
+
+            // Namensgleichheit ohne Import ist kein Befund.
+            Path w2 = Files.createTempDirectory("jaja-zufall");
+            Workspace ws3 = new Workspace(w2);
+            schreibe(w2, "a/ding.py", "class Werkzeug:\n    pass\n");
+            schreibe(w2, "b/ding.py", "class Werkzeug:\n    pass\n");
+            Karte kz = new Karte(ws3);
+            kz.auffrischen();
+            pruefe("blosse Namensgleichheit ist keine Ueberschattung",
+                   kz.ueberschattet().isEmpty());
+            pruefe("sie taucht aber in der Liste auf", kz.doppelte().containsKey("Werkzeug"));
+            pruefe("und wird nicht ungefragt gemeldet",
+                   !kz.uebersicht(kz.suche(null, null), "x").contains("Achtung"));
+
+            // Methoden leben im Klassenraum und koennen nichts ueberschatten.
+            Path w3 = Files.createTempDirectory("jaja-methode");
+            Workspace ws4 = new Workspace(w3);
+            schreibe(w3, "kern.py", "def melde(x):\n    return x\n");
+            schreibe(w3, "nutzer.py",
+                     "from kern import melde\n\nclass K:\n    def melde(self, x):\n        return x\n");
+            Karte km = new Karte(ws4);
+            km.auffrischen();
+            pruefe("Methode ueberschattet keinen Import", km.ueberschattet().isEmpty());
+        }
+
+        // ---------------------------------------------------- Verzeichnisse
+        // Bei vielen Treffern ist eine Dateiliste die falsche Form: gezeigt
+        // wuerden zwanzig von hunderten, sortiert nach globalem Eingangsgrad.
+        {
+            Path w = Files.createTempDirectory("jaja-verz");
+            Workspace ws2 = new Workspace(w);
+            for (int i = 0; i < 20; i++) schreibe(w, "kern/m" + i + ".py", "def f" + i + "():\n    pass\n");
+            for (int i = 0; i < 20; i++) schreibe(w, "tests/t" + i + ".py", "def f" + i + "():\n    pass\n");
+            schreibe(w, "kern/zentral.py", "def zentral():\n    pass\n");
+            for (int i = 0; i < 20; i++)
+                schreibe(w, "kern/m" + i + ".py",
+                         "from kern.zentral import zentral\n\ndef f" + i + "():\n    pass\n");
+            Karte kv = new Karte(ws2);
+            kv.auffrischen();
+            String t = kv.uebersicht(kv.suche(null, null), "allem");
+
+            pruefe("viele Treffer ergeben eine Verzeichnisansicht",
+                   t.contains("nach Verzeichnis"));
+            pruefe("das gewichtigste Verzeichnis steht oben",
+                   t.indexOf("kern/") < t.indexOf("tests/"));
+            pruefe("mit einem Vorschlag zum Eingrenzen", t.contains("muster=\"kern/**\""));
+            pruefe("wenige Treffer bleiben eine Dateiliste",
+                   !kv.uebersicht(kv.suche("zentral", null), "zentral").contains("nach Verzeichnis"));
+        }
+
         // ------------------------------------------------------------ Deckel
         Path gross = Files.createDirectories(tmp.resolve("viele"));
         for (int i = 0; i < 90; i++)
@@ -248,7 +320,8 @@ public final class ProbeKarte {
         k7.auffrischen();
         String viel = k7.uebersicht(k7.suche(null, null), "der Auswahl");
         pruefe("Ausgabe bleibt unter dem Zeichendeckel", viel.length() < 8000);
-        pruefe("und sagt, dass etwas fehlt", viel.contains("weitere"));
+        // Bei so vielen Treffern ist die Verzeichnisansicht die richtige Form.
+        pruefe("und fasst nach Verzeichnis zusammen", viel.contains("nach Verzeichnis"));
 
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."

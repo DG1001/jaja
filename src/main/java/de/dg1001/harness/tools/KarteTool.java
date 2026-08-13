@@ -29,7 +29,8 @@ public final class KarteTool implements Tool {
 
     @Override public String beschreibung() {
         return "Zeigt Projektdateien mit ihren Definitionen und Verweisen, ohne sie zu lesen. "
-             + "Nimm das zuerst, um dich zu orientieren. Aus Mustern geschaetzt, also ein "
+             + "Nimm das zuerst, um dich zu orientieren. Mit doppelte=true zeigt es Namen, "
+             + "die an mehreren Stellen definiert sind. Aus Mustern geschaetzt, also ein "
              + "Hinweis und keine Gewaehr.";
     }
 
@@ -39,7 +40,8 @@ public final class KarteTool implements Tool {
                 "properties":{
                   "stichwort":{"type":"string","description":"filtert ueber Pfad, Definitionen, Stichworte"},
                   "muster":{"type":"string","description":"Glob wie bei glob, z. B. src/**/*.py"},
-                  "datei":{"type":"string","description":"Einzelansicht mit allen Verweisen"}},
+                  "datei":{"type":"string","description":"Einzelansicht mit allen Verweisen"},
+                  "doppelte":{"type":"boolean","description":"Namen zeigen, die an mehreren Stellen definiert sind"}},
                 "required":[]}""";
     }
 
@@ -62,6 +64,9 @@ public final class KarteTool implements Tool {
                         + " (unbekannte Endung, zu gross, oder gibt es nicht)");
             return ToolResult.ok(karte.einzeln(q));
         }
+
+        if (args.get("doppelte") instanceof Boolean b && b)
+            return Spill.vielleichtAuslagern(karte.doppelteAlsText(), ws, "karte", false);
 
         String stichwort = leerAlsNull(Tool.text(args, "stichwort"));
         String glob      = leerAlsNull(Tool.text(args, "muster"));
