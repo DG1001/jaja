@@ -396,6 +396,54 @@ The one thing worth putting next to the earlier small-repository numbers:
 the whole idea predicts — a map earns its keep where reading your way around
 stops being affordable — so it is at least coherent, on thin evidence.
 
+### Two things the Django runs changed
+
+**A broad match now answers with directories, not a truncated file list.**
+`migration` matches 374 of 3,050 files. Showing twenty of them ranked by
+*global* in-degree meant showing Django's most central files that happen to
+contain the word — not the most central migration files. That is where the map
+lost its runs. Directories rank by how often their files are referenced, not by
+how many there are: counting files put eight test-fixture directories above
+`django/db/migrations/`, because a hundred files nobody references beat fourteen
+that carry the subsystem.
+
+```
+374 Treffer fuer 'migration' — zu viele fuer eine Liste, deshalb nach Verzeichnis:
+
+django/db/migrations/                      14  state.py  loader.py  writer.py
+django/core/management/                     1  base.py
+django/db/migrations/operations/            5  base.py  __init__.py  fields.py
+
+Weiter mit muster, z. B. muster="django/db/migrations/**"
+```
+
+One more step to narrow, instead of a guess.
+
+**Shadowed names are reported without being asked for.** This one comes straight
+out of the benchmark in the companion repository: a model created
+`STANDARD = Register()` as specified and then a *second* one in `__init__.py`
+that shadowed the import. Everything visible worked — the CLI, its own tests —
+while the path the task named explicitly stayed empty forever. Three points lost
+to something a list of duplicate names shows in one line.
+
+Getting that useful took two corrections. Module-level assignments were not
+definitions at all (`STANDARD = Register()` is neither `def` nor `class`), so the
+case that motivated the feature was invisible. And bare name collision is far too
+weak a signal: Django has 703 names defined in more than one file and almost all
+are coincidence. What counts is a file that *imports a name and then redefines
+it*, which meant tracking which names each file imports rather than only which
+files. Django then reports **nothing** — the right answer for a mature codebase.
+The reconstructed defect reports:
+
+```
+Achtung: STANDARD wird in __init__.py und einheiten.py definiert
+         — eine davon importiert die andere.
+```
+
+That second one is the **greenfield** half. On a new project the map has nothing
+to orient you with; here it stops being a reading aid and becomes a check on
+what the agent just wrote.
+
 A hypothesis the runs suggest but do not establish: how well it works tracks
 how *specific* the search term is. `csrf` matches 23 of 3,050 files and gave
 the largest, most consistent gain (7→4 and 9→7 turns). `sql` matches 200 and
