@@ -369,32 +369,54 @@ The first of those is the instructive one. It was not a crash and not a wrong
 answer — the map simply asserted a relationship that does not exist, in a form
 that reads exactly like the true ones next to it.
 
-### Does it pay at scale?
+### Does it pay at scale? Measured properly: no.
 
-Twelve runs in Django: three questions whose answers sit deep in the tree,
-two configurations, two repetitions. **All twelve answers were correct** in both
-configurations; only the effort differed.
+375 runs — five questions whose answers sit deep in `django/db/`, three
+configurations, 25 complete rounds, 125 runs per configuration. Configuration
+order rotated each round so a server that slows over hours could not favour one.
 
-| | Turns | Tool calls | Wall clock |
-|---|---|---|---|
-| no map | 8.8 (6–12) | 10.0 (7–16) | 70 s (43–92) |
-| map (structure only) | 7.2 (4–11) | 8.5 (3–14) | 56 s (26–92) |
+| | Correct | Turns | Tool calls | Wall clock |
+|---|---|---|---|---|
+| no map | 125/125 | 4.77 ± 2.44 | 4.86 | 31 s |
+| map, structure only | 125/125 | 4.74 ± 1.89 | 5.07 | 32 s |
+| map with descriptions | 125/125 | 4.74 ± 2.30 | 4.90 | 30 s |
 
-Roughly a fifth fewer turns and a fifth less wall clock. Four of the six pairs
-favour the map, two go the other way, and the spread inside one configuration
-(6–12 turns) is still wider than the gap between them (1.6). At n=2 per cell
-this is a direction, not a result.
+The differences are 0.02, 0.03 and 0.01 turns against a standard error of 0.28.
+That is **t ≈ 0.1** — as close to nothing as a measurement gets. At this sample
+size any real gain larger than about 12% would have shown up. None did.
 
-The one thing worth putting next to the earlier small-repository numbers:
+**This overturns the two earlier numbers in this README.** The twelve-run A/B
+reported 8.8 turns against 7.2 and called it "about a fifth less"; the
+48-file experiment reported 6.0 against 4.7. Both were noise read as signal,
+and both are now excluded by data with forty times the runs. I have left the
+mistake visible here rather than quietly deleting it, because making it twice
+in one day is the more useful lesson: **an effect smaller than the spread needs
+tens of runs per cell, not two or three.**
 
-| | 48 files | 3,050 files |
-|---|---|---|
-| no map | 6.0 turns | 8.8 turns |
-| map, structure only | 6.0 turns | 7.2 turns |
+### Why there was nothing to win
 
-**Structure bought nothing at 48 files and something at 3,050.** That is what
-the whole idea predicts — a map earns its keep where reading your way around
-stops being affordable — so it is at least coherent, on thin evidence.
+Look at the first column: **375 correct answers out of 375**, in every
+configuration. The model found `sql/compiler.py`, `migrations/executor.py`,
+`db/transaction.py`, `backends/base/base.py` and `models/constraints.py` every
+single time, with or without a map, in under five turns.
+
+That is a ceiling, not a result about maps. These questions were chosen for
+unambiguous answers, and unambiguous turned out to mean easy — `grep` finds
+`class UniqueConstraint` on the first try. There was no cost to remove.
+
+So the honest state of this feature:
+
+- **It does not help navigation measurably**, on questions of this difficulty,
+  and it does not hurt either (4.77 vs 4.74 turns, 31 s vs 32 s).
+- **The description pass is not shown to pay for itself.** Twenty minutes for
+  `django/db/**`, no measurable return. Do not run it expecting speed.
+- **The shadowing check is a different proposition** and does not depend on any
+  of this: it turns the same data into a defect finder, and the defect it finds
+  cost three points in the companion benchmark.
+
+What would be needed to detect a navigation benefit if one exists: tasks where
+the map-less configuration actually **fails** or needs fifteen turns, not five.
+An experiment that starts at 100% correctness and four turns has nowhere to go.
 
 ### Two things the Django runs changed
 
