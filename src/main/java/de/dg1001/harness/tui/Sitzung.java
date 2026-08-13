@@ -50,6 +50,7 @@ public final class Sitzung {
     private final TokenSchaetzer schaetzer;
 
     private final ContextBudget budget;
+    private final de.dg1001.harness.wire.ChatEndpunkt endpunkt;
     private Transcript verlauf;
     private boolean fragen;              // vor bash nachfragen?
 
@@ -69,7 +70,8 @@ public final class Sitzung {
 
     public Sitzung(Agent agent, TokenSchaetzer schaetzer, Anzeige anzeige, InputStream in,
                    Workspace ws, ContextBudget budget, String systemPrompt, String modell,
-                   boolean fragen) {
+                   boolean fragen, de.dg1001.harness.wire.ChatEndpunkt endpunkt) {
+        this.endpunkt     = endpunkt;
         this.budget       = budget;
         this.agent        = agent;
         this.schaetzer    = schaetzer;
@@ -288,6 +290,10 @@ public final class Sitzung {
      * Tastendruck der naechsten Eingabe.
      */
     private void tastaturWaehrendArbeit(Future<?> f) throws IOException {
+        tastaturWaehrendArbeit(f, agent::brichAb);
+    }
+
+    private void tastaturWaehrendArbeit(Future<?> f, Runnable beiAbbruch) throws IOException {
         while (!f.isDone()) {
             if (in.available() <= 0) {
                 try { Thread.sleep(40); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
@@ -302,8 +308,8 @@ public final class Sitzung {
             }
 
             if (c == 3) {
-                agent.brichAb();
-                anzeige.hinweis("Abbruch angefordert — der laufende Zug wird noch beendet");
+                beiAbbruch.run();
+                anzeige.hinweis("Abbruch angefordert — der laufende Schritt wird noch beendet");
                 continue;
             }
 
@@ -453,6 +459,8 @@ public final class Sitzung {
 
             case "/karte" -> karte(rest);
 
+            case "/index" -> index(exec);
+
             case "/speichern" -> speichern(rest);
             case "/laden"     -> laden(rest);
 
@@ -476,6 +484,7 @@ public final class Sitzung {
             "/laden [n]           gespeicherte Sitzung zurueckholen",
             "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
             "/karte [stichwort]   Ueberblick ueber das Projekt",
+            "/index               Kurzbeschreibungen fuer die Karte erzeugen",
             "/frei                bash ohne Nachfrage ausfuehren",
             "/fragen              vor bash wieder nachfragen",
             "/verlauf             Groesse des Verlaufs",
@@ -513,6 +522,39 @@ public final class Sitzung {
             anzeige.zeile("  " + Terminal.ROT + "Karte nicht lesbar: " + e.getMessage()
                           + Terminal.NORMAL);
         }
+    }
+
+    /**
+     * Laesst das Modell die Karte beschreiben.
+     *
+     * <p>Laeuft wie ein Auftrag: eigener Faden, Statuszeile, Ctrl-C bricht ab.
+     * Ein Durchlauf ueber ein groesseres Projekt dauert Minuten, und wer ihn
+     * startet, will ihn auch wieder loswerden koennen.
+     */
+    private void index(ExecutorService exec) throws IOException {
+        var karte = new de.dg1001.harness.karte.Karte(ws);
+        var indexer = new de.dg1001.harness.karte.Indexer(endpunkt, ws);
+
+        anzeige.leerzeile();
+        anzeige.statusStarten("beschreibt die Karte");
+        Future<de.dg1001.harness.karte.Indexer.Ergebnis> f =
+                exec.submit(() -> indexer.lauf(karte, anzeige::hinweis));
+        tastaturWaehrendArbeit(f, indexer::brichAb);
+
+        try {
+            var e = f.get();
+            anzeige.statusBeenden();
+            anzeige.zeile("  " + Terminal.GRUEN + e.beschrieben() + " Datei(en) beschrieben"
+                    + Terminal.NORMAL + Terminal.GRAU
+                    + (e.offen() > 0 ? ", " + e.offen() + " offen" : "")
+                    + (e.abgebrochen() ? " (abgebrochen — /index macht weiter)" : "")
+                    + Terminal.NORMAL);
+        } catch (Exception ex) {
+            anzeige.statusBeenden();
+            anzeige.zeile("  " + Terminal.ROT + "Index fehlgeschlagen: " + ex.getCause()
+                          + Terminal.NORMAL);
+        }
+        anzeige.leerzeile();
     }
 
     /** Zeigt eine Datei aus dem Arbeitsbereich; Markdown wird gesetzt. */

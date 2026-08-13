@@ -3,6 +3,8 @@ package de.dg1001.harness;
 import de.dg1001.harness.agent.Agent;
 import de.dg1001.harness.agent.ContextBudget;
 import de.dg1001.harness.agent.Systemprompt;
+import de.dg1001.harness.karte.Indexer;
+import de.dg1001.harness.karte.Karte;
 import de.dg1001.harness.tools.ToolRegistry;
 import de.dg1001.harness.tui.Anzeige;
 import de.dg1001.harness.tui.Sitzung;
@@ -88,6 +90,18 @@ public final class Main {
         if (sp.warnung() != null)
             System.err.println("[harness] Achtung: " + sp.warnung());
 
+        // Eigener Modus: nur die Karte beschreiben, dann Schluss. Steht vor der
+        // Weiche, weil er weder Sitzung noch Aufgabe braucht -- nur das Modell.
+        if (o.containsKey("index")) {
+            Retry e = Retry.vorgabe(client, m -> System.err.println("[index] " + m));
+            Indexer.Ergebnis erg = new Indexer(e, ws)
+                    .lauf(new Karte(ws), m -> System.err.println("[index] " + m));
+            System.err.printf("[index] %d beschrieben, %d offen, %d Anfragen%s%n",
+                    erg.beschrieben(), erg.offen(), erg.buendel(),
+                    erg.abgebrochen() ? " (abgebrochen)" : "");
+            System.exit(erg.offen() == 0 ? 0 : 1);
+        }
+
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
                     !o.containsKey("kein-karte"));
@@ -146,7 +160,7 @@ public final class Main {
                         + " (" + sp.zeichen() + " Zeichen)");
             if (sp.warnung() != null) anzeige.hinweis("Achtung: " + sp.warnung());
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
-                        ws, budget, sp.prompt(), modell, fragen).lauf();
+                        ws, budget, sp.prompt(), modell, fragen, endpunkt).lauf();
         }
     }
 
@@ -188,6 +202,8 @@ public final class Main {
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
               --kein-karte              das Werkzeug 'karte' weglassen
+              --index                   Kurzbeschreibungen fuer die Karte erzeugen
+                                        und beenden (fortsetzbar, sichert laufend)
 
             AGENT.md (oder AGENTS.md) im Arbeitsbereich wird automatisch gelesen
             und ergaenzt den eingebauten Prompt um die Projektregeln.

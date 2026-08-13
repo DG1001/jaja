@@ -88,6 +88,10 @@
             <configuration><mainClass>de.dg1001.harness.karte.ProbeKarte</mainClass></configuration>
           </execution>
           <execution>
+            <id>probe-indexer</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.karte.ProbeIndexer</mainClass></configuration>
+          </execution>
+          <execution>
             <id>probe-tools</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.tools.ProbeTools</mainClass></configuration>
           </execution>

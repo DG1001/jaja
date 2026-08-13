@@ -131,6 +131,11 @@ public final class Karte {
         return s;
     }
 
+    /** Ersetzt einen Eintrag. Fuer den Indexer, der Beschreibungen nachtraegt. */
+    public void setze(Quelldatei q) {
+        if (dateien.containsKey(q.pfad())) dateien.put(q.pfad(), q);
+    }
+
     /** Wer zeigt auf diese Datei? Wird bei Bedarf berechnet, nicht gespeichert. */
     public Map<String, List<String>> rueckverweise() {
         Map<String, List<String>> aus = new TreeMap<>();
@@ -266,9 +271,16 @@ public final class Karte {
                        Map<String, String> namen) {
         b.append(q.pfad()).append("  ").append(q.zeilen()).append(" Zeilen\n");
 
-        if (q.beschreibungGueltig()) {
-            b.append("  ").append(q.beschreibung()).append('\n');
-            if (!q.stichworte().isEmpty())
+        // Wo eine Beschreibung den Zweck schon nennt, ist die volle
+        // Definitionsliste Ballast: mit beidem passten gemessen 15 statt 27
+        // Dateien in dasselbe Budget. In der Uebersicht gewinnt der Zweck,
+        // Einzelheiten holt man sich ueber 'datei'.
+        boolean beschrieben = q.beschreibungGueltig();
+        int wieVieleDefs = alles ? 100 : (beschrieben ? 3 : 6);
+
+        if (beschrieben) {
+            b.append("  ").append(kappe(q.beschreibung(), alles ? 300 : 150)).append('\n');
+            if (alles && !q.stichworte().isEmpty())
                 b.append("  [").append(String.join(", ", q.stichworte())).append("]\n");
         } else if (q.beschreibungVeraltet()) {
             // Bewusst nicht anzeigen: eine Beschreibung, die zum heutigen Inhalt
@@ -277,12 +289,16 @@ public final class Karte {
         }
 
         if (!q.definitionen().isEmpty())
-            b.append("  ").append(kurzListe(q.definitionen(), alles ? 100 : 6)).append('\n');
+            b.append("  ").append(kurzListe(q.definitionen(), wieVieleDefs)).append('\n');
         if (!q.verweise().isEmpty())
             b.append("  → ").append(kurzListe(kurz(q.verweise(), namen), alles ? 100 : 8)).append('\n');
         if (!rueck.isEmpty())
             b.append("  ← ").append(kurzListe(kurz(rueck, namen), alles ? 100 : 8)).append('\n');
         b.append('\n');
+    }
+
+    private static String kappe(String s, int n) {
+        return s.length() <= n ? s : s.substring(0, n - 1) + "…";
     }
 
     private static String kurzListe(List<String> werte, int hoechstens) {

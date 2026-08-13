@@ -100,6 +100,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 | `--kein-karte` | off | leave the `karte` tool out |
+| `--index` | — | write descriptions into the map, then exit |
 
 Exit code is `0` only on an orderly finish.
 
@@ -131,7 +132,7 @@ who — if anyone — approves a command.
 | `tools` | the six tools, `ToolRegistry`, `Spill` (oversized output handling) |
 | `ws` | `Workspace` — every path resolves through it, or not at all |
 | `agent` | `Agent`, `Transcript`, `Elision`, `ContextBudget`, `TokenSchaetzer` |
-| `karte` | the source map: `Scanner` (tree walk), `Karte` (store, ranking, rendering) |
+| `karte` | the source map: `Scanner` (tree walk), `Karte` (store, ranking, rendering), `Indexer` (descriptions) |
 | `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung`, `Markdown` |
 
 ### The seven tools
@@ -186,6 +187,7 @@ copying still works.
 | `/neu` | drop the transcript and start over |
 | `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
 | `/karte [keyword]` | the project map, same view the model gets |
+| `/index` | have the model describe the project files |
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
@@ -302,17 +304,30 @@ of aider's PageRank, and it answers the same question in five lines that anyone
 can check. `stichwort` filters, `muster` takes a glob, `datei` gives one file
 with all its references both ways. `/karte` shows the same thing to you.
 
-**Does it pay?** One measured A/B against this repository, same model
-(DeepSeek-V4-Flash), same question — *where is the transcript elided when
-context runs short?* Both answers were correct:
+**Does it pay? Less clearly than the first run suggested.** Nine runs against
+this repository, three per configuration, same model (DeepSeek-V4-Flash), same
+question — *where is the transcript elided when context runs short?* Every
+answer was correct.
 
 | | Turns | Tool calls | Wall clock |
 |---|---|---|---|
-| without `karte` | 6 | 7 | 61 s |
-| with `karte` | **3** | **4** | **48 s** |
+| no map | 6.0 (5–7) | 6.7 (6–8) | 72 s (49–94) |
+| map, structure only | 6.0 (6–6) | 7.0 (6–8) | 76 s (63–94) |
+| map with descriptions | 4.7 (3–6) | 5.7 (4–7) | 64 s (31–84) |
 
-Half the turns. That is one run on one question, not a benchmark — but the
-mechanism is not subtle: it replaced a grep, a glob and two speculative reads.
+Read that carefully. **The spread inside one configuration reaches three turns;
+the gap between no map and the full map is 1.3.** The first single A/B run gave
+6 turns against 3 and this README claimed it halved the work — that was noise
+presented as a finding, and this table replaces it.
+
+What survives three runs each: **structure alone buys nothing measurable here**,
+and descriptions are modestly ahead of both — consistent with the idea that
+*what is this file for* is the question a map should answer, but not
+established by n=3.
+
+One honest caveat in the other direction: 48 files is a small repository, which
+is precisely where a model can afford to glob and read its way around. The case
+for a map is large projects, and that case is untested here.
 
 ### How it is built, and what it costs
 
@@ -345,18 +360,44 @@ would push the run toward the context wall we spent a whole session fixing. As
 a tool result it costs only when used and can be elided afterwards like anything
 else.
 
-### Descriptions are the next step, not this one
+### Descriptions: `jaja --index`
 
-The map holds fields for a one-line description and keywords per file, and the
-tool shows them — but nothing writes them yet. That needs a model and an
-indexing pass, and it is worth building on a foundation that is already tested.
+Structure says what is in a file. It does not say what the file is *for*, which
+is the question you would otherwise answer by reading it. `jaja --index` has the
+model write one sentence and a few keywords per file:
 
-The data model already handles the hard part: each file stores a content hash,
-and a description records which hash it was written for. When they diverge the
-description is **not shown** — only `[Beschreibung veraltet]` — because a
-description that no longer matches the file misleads the model more actively
-than no description at all. That is the one warning every write-up on this
-subject repeats, so it is designed in rather than bolted on.
+```
+src/main/java/de/dg1001/harness/agent/ContextBudget.java  77 Zeilen
+  Berechnet den nutzbaren Eingabebereich aus Kontextfenster minus
+  Ausgabebudget und Reserve und löst bei Überschreitung Kürzungen aus.
+```
+
+The prompt aims at purpose rather than content — *not "contains the class
+Rabatt" but "calculates volume discounts"* — because otherwise you get a
+paraphrase of the definition list that is already printed next to it.
+
+Over this repository: 47 files, 11 requests, about eleven minutes on
+DeepSeek-V4-Flash. Three properties make that survivable:
+
+- **It saves after every batch.** Anyone who starts a twenty-minute pass will
+  interrupt it; a second `--index` picks up where the first stopped.
+- **It starts with the files with the highest in-degree.** Stop halfway and the
+  ones that matter are described.
+- **A failed batch costs its files, not the run.** Server errors, unparseable
+  answers, invented paths — all reported and skipped. Most of the checks in
+  `ProbeIndexer` are about these, including the fenced code block that is the
+  most common way a model breaks "reply with JSON only".
+
+`/index` does the same inside a session, with `Ctrl-C` to stop it.
+
+**Staleness is handled by design, not by discipline.** Every file stores a
+content hash, and a description records which hash it was written for. When they
+diverge the description is **not shown** — only `[Beschreibung veraltet]`, with
+the structure still there and current. Verified on a live map: append one line
+to `Elision.java` and its description disappears while its neighbour's stays.
+A description that no longer matches misleads the model more actively than no
+description at all; that is the one warning every write-up on this subject
+repeats, so it is designed in rather than bolted on.
 
 ## Project rules: `AGENT.md`
 
@@ -470,6 +511,7 @@ failure, which is all Maven needs.
 | `ProbeAgent` | budget, transcript, elision |
 | `ProbeSchleife` | the loop and approvals, against a scripted endpoint |
 | `ProbeKarte` | tree walk, import resolution, incrementality, staleness |
+| `ProbeIndexer` | batching, malformed answers, resumability, abort |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
 | `ProbeMarkdown` | headings, lists, tables, code fences, wrapping |
 | `Probe` (live) | round trip to a real server |
@@ -562,7 +604,7 @@ src/main/java/de/dg1001/harness/
   tools/                 the six tools, registry, spilling
   ws/Workspace.java      path confinement
   agent/                 loop, transcript, elision, budget, estimator
-  karte/                 source map: walk, store, ranking
+  karte/                 source map: walk, store, ranking, descriptions
   tui/                   terminal, line editor, display, session
 src/test/java/…          seven probe suites
 pom.xml                  Maven; no dependencies
