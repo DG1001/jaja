@@ -220,7 +220,7 @@ public final class ProbeKarte {
                einzeln.contains("ausserhalb des Projekts") && einzeln.contains("java.util.List"));
 
         // ------------------------------------------------ ueber die Registry
-        ToolRegistry r = ToolRegistry.vorgabe();
+        ToolRegistry r = ToolRegistry.vorgabe(true);
         pruefe("Werkzeug liefert eine Uebersicht",
                werkzeug(r, ws, "{}").contains("Dateien in der Karte"));
         pruefe("Stichwort filtert",

@@ -99,7 +99,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--frei` | off | session: run `bash` without asking |
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
-| `--kein-karte` | off | leave the `karte` tool out |
+| `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
 
@@ -116,7 +116,8 @@ Main ──┬──> Sitzung ──> Anzeige + Eingabe + Terminal        (inter
        │       │
        └───────┴──> Agent ──┬──> ChatEndpunkt ──> Retry ──> ChatClient ──> /v1
                             │                          └── Json + Messages
-                            ├──> ToolRegistry ──> glob grep read write edit bash karte
+                            ├──> ToolRegistry ──> glob grep read write edit bash
+                            │                     (+ karte with --karte)
                             │           │              └──> Workspace (confinement)
                             │           └──> Freigabe   (ask before bash)
                             ├──> Beobachter             (progress: stderr or Anzeige)
@@ -136,9 +137,12 @@ who — if anyone — approves a command.
 | `karte` | the source map: `Scanner` (tree walk), `Karte` (store, ranking, rendering), `Indexer` (descriptions) |
 | `tui` | `Terminal` (raw mode), `Eingabe` (line editor), `Anzeige`, `Sitzung`, `Markdown` |
 
-### The seven tools
+### The six tools
 
-`glob` · `grep` · `read` · `write` · `edit` · `bash` · `karte`
+`glob` · `grep` · `read` · `write` · `edit` · `bash`
+
+A seventh, `karte`, exists but is **off by default** — see below for the 735
+runs that put it there. `--karte` switches it on.
 
 Registration order is fixed and must stay that way. The tool list sits at the
 very front of every request; reorder it and the server's prefix cache misses
@@ -440,6 +444,10 @@ but "harmless" is a poor reason to spend base-load tokens in every request and a
 turn whenever it is used. The description pass is worse off still: twenty
 minutes of local GPU for `django/db/**` and, if anything, slightly more wrong
 answers.
+
+**So it is off by default.** `--karte` switches it on, and `/karte` still shows
+the same view to you at any time without the model paying for it. Turning a
+feature off after building it is the cheaper half of having measured it.
 
 What survives is the part that was never about navigation: **the shadowing
 check**. It uses the same index to answer a different question — *did the agent

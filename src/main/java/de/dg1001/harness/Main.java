@@ -106,7 +106,7 @@ public final class Main {
 
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
-                    !o.containsKey("kein-karte"));
+                    o.containsKey("karte"));
             return;
         }
 
@@ -116,7 +116,7 @@ public final class Main {
         Retry endpunkt = Retry.vorgabe(client,
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
-        Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(!o.containsKey("kein-karte")),
+        Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
                                 ws, budget, maxZuege, laut);
 
         long t0 = System.nanoTime();
@@ -203,7 +203,8 @@ public final class Main {
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
-              --kein-karte              das Werkzeug 'karte' weglassen
+              --karte                   das Werkzeug 'karte' dazunehmen (Vorgabe: aus,
+                                        siehe README — ohne messbaren Nutzen)
               --index                   Kurzbeschreibungen fuer die Karte erzeugen
                                         und beenden (fortsetzbar, sichert laufend)
               --muster <glob>           mit --index: nur diesen Teil beschreiben,

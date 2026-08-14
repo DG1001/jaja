@@ -45,13 +45,17 @@ public final class ToolRegistry {
      *  <p>karte kam spaeter dazu und steht deshalb hinten, nicht vorne bei den
      *  anderen Schau-Werkzeugen: jede Einfuegung weiter vorn haette den
      *  Praefix-Cache aller folgenden Werkzeuge verschoben. */
-    public static ToolRegistry vorgabe() { return vorgabe(true); }
+    public static ToolRegistry vorgabe() { return vorgabe(false); }
 
     /**
-     * @param mitKarte false laesst die Quellenkarte weg. Gibt es, weil die
-     *        veroeffentlichten Benchmarkzahlen mit sechs Werkzeugen gemessen
-     *        wurden — ohne diesen Schalter waere der Stand nicht mehr
-     *        nachstellbar.
+     * @param mitKarte true nimmt die Quellenkarte dazu.
+     *
+     * <p>Sie ist per Vorgabe <em>aus</em>, und das ist ein Messergebnis: ueber
+     * 735 Laeufe in zwei Versuchsreihen brachte sie keinen nachweisbaren
+     * Vorteil, kostete aber ungefaehr den einen Werkzeugaufruf, den sie
+     * braucht (15,0 gegen 14,5 Aufrufe). Grundlast in jeder Anfrage fuer
+     * etwas, das nichts eintraegt, ist der falsche Handel — auch wenn es
+     * nicht schadet.
      */
     public static ToolRegistry vorgabe(boolean mitKarte) {
         ToolRegistry r = new ToolRegistry()

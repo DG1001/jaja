@@ -83,6 +83,13 @@ public final class ProbeTools {
 
         pruefe("Registry: Werkzeugreihenfolge stabil",
                String.join(",", r.specs().stream().map(s -> s.name()).toList()),
+               t -> t.equals("glob,grep,read,write,edit,bash"));
+
+        // Die Karte kommt nur auf Wunsch dazu, und dann hinten -- vorne
+        // eingefuegt verschoebe sie den Praefix-Cache aller anderen.
+        pruefe("Karte nur auf Wunsch, und dann hinten",
+               String.join(",", ToolRegistry.vorgabe(true).specs().stream()
+                       .map(s -> s.name()).toList()),
                t -> t.equals("glob,grep,read,write,edit,bash,karte"));
 
         // ------------------------------------------------------------- write
