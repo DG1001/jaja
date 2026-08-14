@@ -396,27 +396,56 @@ tens of runs per cell, not two or three.**
 ### Why there was nothing to win
 
 Look at the first column: **375 correct answers out of 375**, in every
-configuration. The model found `sql/compiler.py`, `migrations/executor.py`,
-`db/transaction.py`, `backends/base/base.py` and `models/constraints.py` every
-single time, with or without a map, in under five turns.
+configuration, in under five turns. That is a ceiling, not a result about maps.
+The questions were chosen for unambiguous answers, and unambiguous turned out to
+mean easy — `grep` finds `class UniqueConstraint` on the first try.
 
-That is a ceiling, not a result about maps. These questions were chosen for
-unambiguous answers, and unambiguous turned out to mean easy — `grep` finds
-`class UniqueConstraint` on the first try. There was no cost to remove.
+### So the experiment was rebuilt around hard questions
 
-So the honest state of this feature:
+Six questions that a single `grep` cannot answer, because they ask about
+relationships between files: the layers a `.filter().count()` passes through
+before SQL exists, the base classes a new database backend must inherit, where
+`db_index=True` turns into `CREATE INDEX`, how migration order is decided across
+apps, whether `exclude()` becomes a JOIN or a subquery. Chain questions are
+graded on how many of the expected files appear, not on one.
 
-- **It does not help navigation measurably**, on questions of this difficulty,
-  and it does not hurt either (4.77 vs 4.74 turns, 31 s vs 32 s).
-- **The description pass is not shown to pay for itself.** Twenty minutes for
-  `django/db/**`, no measurable return. Do not run it expecting speed.
-- **The shadowing check is a different proposition** and does not depend on any
-  of this: it turns the same data into a defect finder, and the defect it finds
-  cost three points in the companion benchmark.
+A pilot confirmed the headroom before committing nine hours: **9.0 turns**
+without a map, against 4.7 in the first series, with a criterion fixed in
+advance. Then 360 runs, 120 per configuration, 20 complete rounds.
 
-What would be needed to detect a navigation benefit if one exists: tasks where
-the map-less configuration actually **fails** or needs fifteen turns, not five.
-An experiment that starts at 100% correctness and four turns has nowhere to go.
+| | Correct | Turns | Tool calls | Wall clock |
+|---|---|---|---|---|
+| no map | 114/120 | 10.69 ± 8.00 | 14.5 | 113 s |
+| map, structure only | 114/120 | 11.85 ± 8.49 | 15.0 | 117 s |
+| map with descriptions | 109/120 | 11.28 ± 8.14 | 14.7 | 116 s |
+
+Turn differences: −1.16 and −0.59 against a standard error of ~1.05, so
+**t ≈ −1.1 and −0.6**. Correctness: 4.2 percentage points against a standard
+error of 3.3, **t ≈ 1.3**. Nothing here is significant, and every sign that is
+non-zero points *against* the map.
+
+**Two experiments, 735 runs, no measurable benefit at either difficulty.** On
+easy questions there was nothing to win; on hard ones the map did not win it.
+What can be excluded at this sample size is a navigation gain larger than about
+20%. What cannot be excluded is a small effect in either direction.
+
+One concrete number is worth more than the averages: the map costs roughly the
+one tool call it takes (15.0 calls against 14.5) and returns nothing measurable
+for it.
+
+### What this means for the feature
+
+The navigation map is **not justified by evidence**. It does not hurt either,
+but "harmless" is a poor reason to spend base-load tokens in every request and a
+turn whenever it is used. The description pass is worse off still: twenty
+minutes of local GPU for `django/db/**` and, if anything, slightly more wrong
+answers.
+
+What survives is the part that was never about navigation: **the shadowing
+check**. It uses the same index to answer a different question — *did the agent
+just define a name it also imports* — and the defect it finds cost three points
+in the companion benchmark. That claim is mechanical rather than measured, and
+measuring it needs a different experiment: agent-written code, not Django.
 
 ### Two things the Django runs changed
 
