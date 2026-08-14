@@ -437,6 +437,52 @@ One concrete number is worth more than the averages: the map costs roughly the
 one tool call it takes (15.0 calls against 14.5) and returns nothing measurable
 for it.
 
+### The same series against the hosted API
+
+Everything above ran on local hardware, where tokens are free — so the
+measurement was blind to the dimension anyone paying for an API cares about.
+360 runs against DeepSeek's own endpoint, six workers in parallel, same
+questions, same three configurations.
+
+| | Correct | Turns | Input tokens | Wall clock |
+|---|---|---|---|---|
+| no map | 115/120 | 8.18 ± 3.38 | 60,244 | 25 s |
+| map, structure only | 118/120 | 7.92 ± 3.45 | **54,395** | 24 s |
+| map with descriptions | 118/120 | 7.99 ± 3.85 | 57,228 | 25 s |
+
+**Every sign now favours the map** — 3.2% fewer turns, 9.7% fewer input tokens,
+2.5 points more correct answers. Locally every one of those signs was reversed.
+And none of it is significant either: t = 0.88, 0.59 and −1.15.
+
+The input-token spread is the reason (±51,500 on a mean of 60,000): a run that
+takes 18 turns costs twelve times one that takes 4. Detecting a 10% difference
+against that spread needs roughly **1,200 runs per cell**, not 120.
+
+So after 1,095 runs across two days the question is still open, with local
+evidence pointing gently against and hosted evidence pointing gently for. Note
+these are not the same model despite the name: locally a heavily quantised GGUF,
+hosted the full weights — and the hosted answers were visibly more precise,
+citing methods with line numbers.
+
+### Three things that series settled anyway
+
+**Tokens are the sensitive measure, turns are not.** The same runs differ by
+3.2% in turns and 9.7% in input tokens, because a turn saved does not save one
+turn's worth of tokens — it saves every token that turn would have re-sent.
+Anyone measuring this kind of technique should measure tokens.
+
+**The prefix cache works, and now there is a number for it.** The bill came to
+**$0.67** for 20.8M input and 0.89M output tokens. Working backwards from what
+was actually charged gives a **87.3% cache hit rate** — external confirmation
+for the two design rules that exist to protect it: never reorder the tool list,
+and append tool results in call order rather than completion order. Without
+those, the same series would have cost $3.16.
+
+**Cost is not the constraint; latency is.** 20.8M tokens for 67 cents is less
+than the electricity the nine-hour local series drew. And six parallel workers
+turned nine hours into 38 minutes — locally the bottleneck is memory bandwidth,
+which cannot be bought by the hour; hosted it is latency, which can.
+
 ### What this means for the feature
 
 The navigation map is **not justified by evidence**. It does not hurt either,

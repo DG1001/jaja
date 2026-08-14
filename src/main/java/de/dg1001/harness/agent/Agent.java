@@ -43,6 +43,13 @@ public final class Agent {
      *  dann fuer immer auf dem Startwert. */
     private int werkzeugZeichen = 0;
 
+    /** Summe ueber alle Zuege. Interessant, sobald jemand fuer Token bezahlt:
+     *  die Eingabe wird in jedem Zug erneut geschickt und waechst dabei. */
+    private long eingabeTokens = 0, ausgabeTokens = 0;
+
+    public long eingabeTokens() { return eingabeTokens; }
+    public long ausgabeTokens() { return ausgabeTokens; }
+
     public Agent(ChatEndpunkt client, ToolRegistry registry, Workspace ws,
                  ContextBudget budget, int maxZuege, boolean laut) {
         this(client, registry, ws, budget, maxZuege,
@@ -133,6 +140,8 @@ public final class Agent {
             }
 
             schaetzer.kalibriere(zeichenVorher, a.usage().promptTokens());
+            eingabeTokens += a.usage().promptTokens();
+            ausgabeTokens += a.usage().completionTokens();
             t.add(a.message());
 
             beobachter.zug(zug, a, budget.nutzbareEingabe());

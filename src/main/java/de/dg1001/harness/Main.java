@@ -125,6 +125,8 @@ public final class Main {
 
         System.err.printf("[harness] %s nach %d Zuegen, %d Werkzeugaufrufen, %d s (%s)%n",
                 e.status(), e.zuege(), e.werkzeugaufrufe(), sek, agent.schaetzer());
+        System.err.printf("[harness] Token: %d Eingabe, %d Ausgabe%n",
+                agent.eingabeTokens(), agent.ausgabeTokens());
         if (e.hinweis() != null) System.err.println("[harness] " + e.hinweis());
         if (e.abschluss() != null) System.out.println(e.abschluss());
 
