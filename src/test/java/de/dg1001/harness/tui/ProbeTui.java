@@ -135,6 +135,21 @@ public final class ProbeTui {
                    Sitzung.uebergabeAuftrag("projekt.md").contains("projekt.md"), true);
         }
 
+        // ----------------------------------------------------- Herkunft
+        // Der lokale Server meldet sich unter demselben Namen wie die
+        // gehostete Schnittstelle -- die Kopfzeilen waren Zeichen fuer Zeichen
+        // gleich. Bei einem Dienst, der abrechnet, ist das zu wenig.
+        pruefe("lokale Adresse wird als lokal erkannt",
+               de.dg1001.harness.Main.herkunft("http://127.0.0.1:8888/v1"), "lokal :8888");
+        pruefe("localhost ebenso",
+               de.dg1001.harness.Main.herkunft("http://localhost:9000/v1"), "lokal :9000");
+        pruefe("gehostete Adresse zeigt den Rechnernamen",
+               de.dg1001.harness.Main.herkunft("https://api.deepseek.com/v1"), "api.deepseek.com");
+        pruefe("fremde Adresse im eigenen Netz ist nicht lokal",
+               de.dg1001.harness.Main.herkunft("http://192.168.1.5:8000/v1"), "192.168.1.5");
+        pruefe("unlesbare Adresse stuerzt nicht ab",
+               de.dg1001.harness.Main.herkunft("kaputt"), "kaputt");
+
         // ------------------------------------------------------------ Anzeige
         pruefe("Werkzeugzeile nennt Name und Argument",
                gezeichnet(a -> a.werkzeugFertig(

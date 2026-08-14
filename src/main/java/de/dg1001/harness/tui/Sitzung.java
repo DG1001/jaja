@@ -46,6 +46,7 @@ public final class Sitzung {
     private final Workspace ws;
     private final String systemPrompt;
     private final String modell;
+    private final String herkunft;
     private final InputStream in;
     private final TokenSchaetzer schaetzer;
 
@@ -70,7 +71,9 @@ public final class Sitzung {
 
     public Sitzung(Agent agent, TokenSchaetzer schaetzer, Anzeige anzeige, InputStream in,
                    Workspace ws, ContextBudget budget, String systemPrompt, String modell,
-                   boolean fragen, de.dg1001.harness.wire.ChatEndpunkt endpunkt) {
+                   boolean fragen, de.dg1001.harness.wire.ChatEndpunkt endpunkt,
+                   String herkunft) {
+        this.herkunft     = herkunft;
         this.endpunkt     = endpunkt;
         this.budget       = budget;
         this.agent        = agent;
@@ -115,7 +118,13 @@ public final class Sitzung {
 
     private void kopf() {
         anzeige.leerzeile();
+        // Die Herkunft gehoert in die Kopfzeile, nicht nur der Modellname:
+        // der lokale Server meldet sich unter demselben Namen wie die
+        // gehostete Schnittstelle, und eines von beiden rechnet ab.
+        boolean bezahlt = !herkunft.startsWith("lokal");
         anzeige.zeile("  " + Terminal.FETT + "jaja" + Terminal.NORMAL + " · " + modell
+                      + " · " + (bezahlt ? Terminal.GELB : Terminal.GRUEN) + herkunft
+                      + Terminal.NORMAL
                       + " · " + Terminal.GRAU + ws.wurzel() + Terminal.NORMAL);
         anzeige.zeile("  " + Terminal.GRAU
                       + (fragen ? "bash fragt nach · " : "bash laeuft ungefragt · ")

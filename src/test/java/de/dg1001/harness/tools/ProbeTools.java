@@ -64,6 +64,22 @@ public final class ProbeTools {
                lauf(r, ws, "bash", "{\"kommando\":\"sleep 30\",\"sekunden\":2}"),
                t -> t.contains("abgebrochen nach 2"));
 
+        // Ein Server, den die Shell startet, ueberlebt sonst die Zeitgrenze:
+        // destroy() trifft nur die Shell, das Kind wird an init umgehaengt und
+        // haelt seinen Port weiter. Genau so an einem laufenden Flask-Server
+        // beobachtet, der Port 5000 blockierte, nachdem der Aufruf laengst
+        // abgebrochen war.
+        {
+            Path marke = tmp.resolve("kind-lebt-noch.txt");
+            Files.deleteIfExists(marke);
+            lauf(r, ws, "bash", "{\"kommando\":\"(sleep 30; touch kind-lebt-noch.txt) & sleep 30\","
+                    + "\"sekunden\":2}");
+            Thread.sleep(4000);
+            pruefe("Zeitgrenze beendet auch die Kinder der Shell",
+                   Files.exists(marke) ? "Kind lebt weiter" : "Kind beendet",
+                   t -> t.equals("Kind beendet"));
+        }
+
         // Auslagerung: 40.000 Zeichen erzeugen
         Tool.ToolResult gross = r.fuehreAus(
                 new ToolCall("x", "bash",

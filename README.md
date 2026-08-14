@@ -201,6 +201,11 @@ copying still works.
 | `Ctrl-C` | abort the running turn — the session and the transcript survive |
 | `Ctrl-D` | quit |
 | `Ctrl-F` | switch asking on or off **while a turn is running** |
+
+The header names the endpoint, not just the model: `lokal :8888` in green,
+`api.deepseek.com` in yellow. Both were showing `deepseek-v4-flash` and were
+byte-identical, because the local server answers to the same model id as the
+hosted one — and one of the two bills.
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
 | `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
@@ -775,6 +780,15 @@ Three bugs that only a test caught, all invisible in normal operation:
   the timeout was dead code. Everything works until the first command that
   hangs, and then the run stops forever. (The class comment warned about this.
   It was written by the same person who then did it.)
+- **A killed shell leaves its children running.** `Process.destroy()` signals
+  the shell, not what the shell started. A `python3 app.py` that outlives its
+  timeout gets reparented to init and keeps its port; the harness moves on
+  without noticing. Found by looking at a session that seemed hung: a Flask
+  server had held port 5000 for two and a half hours, and a `pytest` from a
+  benchmark three days earlier had been burning a full core the entire time —
+  through every measurement series in this README. The fix collects
+  `descendants()` *before* killing the parent, because afterwards they are no
+  longer descendants.
 - **A glob that skips the project root.** Java's `PathMatcher` requires at
   least one directory level after a `**/` prefix, so `**/*.py` does not match
   `main.py`. Models write that pattern constantly

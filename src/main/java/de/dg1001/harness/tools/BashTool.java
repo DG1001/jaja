@@ -82,6 +82,9 @@ public final class BashTool implements Tool {
 
         boolean rechtzeitig;
         try {
+            // Die Nachkommen VOR dem Toeten einsammeln: sobald die Shell weg
+            // ist, werden ihre Kinder an init umgehaengt und sind ueber
+            // descendants() nicht mehr auffindbar.
             rechtzeitig = p.waitFor(sekunden, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -90,14 +93,17 @@ public final class BashTool implements Tool {
         }
 
         if (!rechtzeitig) {
+            java.util.List<ProcessHandle> nachkommen = p.descendants().toList();
             p.destroy();                              // SIGTERM
             try {
                 if (!p.waitFor(3, TimeUnit.SECONDS))
                     p.destroyForcibly();              // SIGKILL, sonst bleibt er stehen
+                beendeNachkommen(nachkommen);
                 leser.join(java.time.Duration.ofSeconds(2));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                p.destroyForcibly();
+p.destroyForcibly();
+                beendeNachkommen(p.descendants().toList());
             }
             String t = puffer.toString(StandardCharsets.UTF_8)
                      + "\n[abgebrochen nach " + sekunden + " s]";
@@ -120,5 +126,29 @@ public final class BashTool implements Tool {
         b.append("[Rueckgabewert ").append(code).append(", ").append(ms).append(" ms]");
 
         return Spill.vielleichtAuslagern(b.toString(), ws, "bash", code != 0);
+    }
+
+    /**
+     * Raeumt auf, was die Shell hinterlassen hat.
+     *
+     * <p>{@code destroy()} trifft nur den Prozess selbst. Startet die Shell ein
+     * Kind — {@code python3 app.py}, ein Entwicklungsserver, irgendetwas mit
+     * {@code &} — dann ueberlebt dieses Kind das Abwuergen der Shell, wird an
+     * init umgehaengt und haelt seinen Port weiter. Genau so gesehen: nach dem
+     * Ablauf der Zeitgrenze lief ein Flask-Server als Waise weiter und blockierte
+     * Port 5000, waehrend der Harness laengst weitergemacht hatte.
+     *
+     * <p>Die Liste muss <b>vor</b> dem Toeten des Elternprozesses aufgenommen
+     * werden; danach sind die Kinder keine Nachkommen mehr.
+     */
+    private static void beendeNachkommen(java.util.List<ProcessHandle> nachkommen) {
+        for (ProcessHandle h : nachkommen) h.destroy();
+        for (ProcessHandle h : nachkommen) {
+            try {
+                h.onExit().get(2, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                h.destroyForcibly();
+            }
+        }
     }
 }

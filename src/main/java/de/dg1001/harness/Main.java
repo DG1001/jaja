@@ -106,7 +106,7 @@ public final class Main {
 
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
-                    o.containsKey("karte"));
+                    o.containsKey("karte"), herkunft(baseUrl));
             return;
         }
 
@@ -144,7 +144,8 @@ public final class Main {
      */
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen,
-                                Systemprompt.Ergebnis sp, boolean mitKarte) throws Exception {
+                                Systemprompt.Ergebnis sp, boolean mitKarte,
+                                String herkunft) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -164,7 +165,7 @@ public final class Main {
                         + " (" + sp.zeichen() + " Zeichen)");
             if (sp.warnung() != null) anzeige.hinweis("Achtung: " + sp.warnung());
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
-                        ws, budget, sp.prompt(), modell, fragen, endpunkt).lauf();
+                        ws, budget, sp.prompt(), modell, fragen, endpunkt, herkunft).lauf();
         }
     }
 
@@ -181,6 +182,26 @@ public final class Main {
         String ausUmgebung = System.getenv("JAJA_API_KEY");
         if (ausUmgebung != null && !ausUmgebung.isBlank()) return ausUmgebung;
         return o.getOrDefault("api-key", "unused");
+    }
+
+    /**
+     * Kurzform der Adresse fuer die Kopfzeile.
+     *
+     * <p>Notwendig, weil Modellnamen nichts darueber sagen, wo gerechnet wird:
+     * der lokale Server meldet sich als {@code deepseek-v4-flash}, die
+     * gehostete Schnittstelle ebenso. Die Kopfzeilen waren Zeichen fuer
+     * Zeichen gleich — bei einem Dienst, der abrechnet, ist das zu wenig.
+     */
+    public static String herkunft(String baseUrl) {
+        try {
+            java.net.URI u = java.net.URI.create(baseUrl);
+            String host = u.getHost() == null ? baseUrl : u.getHost();
+            if (host.equals("127.0.0.1") || host.equals("localhost") || host.equals("::1"))
+                return "lokal" + (u.getPort() > 0 ? " :" + u.getPort() : "");
+            return host;
+        } catch (RuntimeException e) {
+            return baseUrl;
+        }
     }
 
     private static Map<String, String> argumente(String[] args) {
