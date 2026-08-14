@@ -57,11 +57,24 @@ mvn package
 ./bin/jaja --liste             # which model servers are up
 ```
 
+```bash
+./bin/jaja --online ~/my-project   # hosted API instead of a local server
+```
+
 `bin/jaja` probes the usual ports, asks the server what it is serving and
 starts there. That exists because the harness has to default to *some* port,
 and the moment two models take turns on one machine that default is wrong half
 the time. `JAJA_PORTS="8000 8888"` changes where it looks; `--model <name>`
 finds the port serving that particular model.
+
+`--online` skips the probing and uses a hosted endpoint, reading the key from
+`~/.deepseek-key` (`JAJA_ONLINE_URL` and `JAJA_ONLINE_MODELL` change the target).
+The key goes in through the **environment**, never the command line: `--api-key`
+lands in `/proc/<pid>/cmdline`, which is mode 444 and readable by every user on
+the machine, while `/proc/<pid>/environ` is 400 and belongs to you alone.
+`JAJA_API_KEY` therefore takes precedence over the flag. This was worth checking
+rather than assuming — the first version of the launcher passed the key as an
+argument, and a comment above it claimed the opposite.
 
 The jar underneath takes plain flags, which is what scripts and benchmarks use:
 

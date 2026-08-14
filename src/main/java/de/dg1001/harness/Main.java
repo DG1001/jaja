@@ -49,7 +49,7 @@ public final class Main {
 
         String baseUrl = o.getOrDefault("base-url", "http://127.0.0.1:8888/v1");
         String modell  = o.get("model");
-        String apiKey  = o.getOrDefault("api-key", "unused");
+        String apiKey  = schluessel(o);
         Path   cwd     = Path.of(o.getOrDefault("cwd", "."));
         int fenster    = Integer.parseInt(o.getOrDefault("context-window", "65536"));
         int maxAusgabe = Integer.parseInt(o.getOrDefault("max-output", "16384"));
@@ -168,6 +168,21 @@ public final class Main {
         }
     }
 
+    /**
+     * Der API-Schluessel, vorzugsweise aus der Umgebung.
+     *
+     * <p>{@code --api-key} steht in {@code /proc/<pid>/cmdline}, und die ist
+     * fuer <em>jeden</em> Nutzer der Maschine lesbar — ein {@code ps} genuegt.
+     * {@code /proc/<pid>/environ} gehoert dagegen dem Eigentuemer allein.
+     * Deshalb hat die Umgebungsvariable Vorrang, und die Option bleibt nur
+     * fuer den Fall, dass jemand sie ausdruecklich will.
+     */
+    private static String schluessel(Map<String, String> o) {
+        String ausUmgebung = System.getenv("JAJA_API_KEY");
+        if (ausUmgebung != null && !ausUmgebung.isBlank()) return ausUmgebung;
+        return o.getOrDefault("api-key", "unused");
+    }
+
     private static Map<String, String> argumente(String[] args) {
         Map<String, String> m = new HashMap<>();
         for (int i = 0; i < args.length; i++) {
@@ -193,7 +208,9 @@ public final class Main {
               --model <name>            Modellname (Pflicht)
               --base-url <url>          OpenAI-kompatibler Endpunkt
                                         (Vorgabe http://127.0.0.1:8888/v1)
-              --api-key <schluessel>    Vorgabe "unused"
+              --api-key <schluessel>    Vorgabe "unused"; besser ueber die
+                                        Umgebungsvariable JAJA_API_KEY, weil die
+                                        Kommandozeile fuer alle lesbar ist
               --cwd <pfad>              Arbeitsbereich, Vorgabe .
               --prompt <text>           Aufgabe
               --prompt-file <pfad>      Aufgabe aus Datei

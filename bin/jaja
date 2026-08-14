@@ -4,6 +4,7 @@
 #
 #   jaja                        Sitzung im aktuellen Verzeichnis
 #   jaja ~/projekt              Sitzung dort
+#   jaja --online ~/projekt     ueber die gehostete Schnittstelle statt lokal
 #   jaja --liste                welche Modellserver gerade laufen
 #   jaja --model laguna-s-2.1   dieses Modell suchen, egal auf welchem Port
 #   jaja -- --max-turns 200     alles nach -- geht unveraendert an jaja
@@ -14,6 +15,11 @@
 # Modelle abwechselnd laufen, stimmt sie die Haelfte der Zeit nicht.
 #
 # Ports anders setzen:  JAJA_PORTS="8888 8889 8000" jaja
+#
+# --online nimmt die gehostete Schnittstelle. Der Schluessel steht in
+# ~/.deepseek-key (oder JAJA_SCHLUESSEL_DATEI) und wird nie auf der
+# Kommandozeile uebergeben -- dort stuende er in der Prozessliste, fuer jeden
+# lesbar, der auf der Maschine 'ps' aufrufen kann.
 set -e
 
 # readlink -f loest Symlinks auf: ohne das zeigt $0 bei einem Link in
@@ -33,6 +39,31 @@ modell_auf() {
     curl -s -m 2 "http://127.0.0.1:$1/v1/models" 2>/dev/null \
         | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
 }
+
+# ------------------------------------------------------------------ online
+ONLINE_URL=${JAJA_ONLINE_URL:-https://api.deepseek.com/v1}
+ONLINE_MODELL=${JAJA_ONLINE_MODELL:-deepseek-v4-flash}
+SCHLUESSELDATEI=${JAJA_SCHLUESSEL_DATEI:-$HOME/.deepseek-key}
+
+if [ "${1:-}" = "--online" ]; then
+    shift
+    if [ ! -r "$SCHLUESSELDATEI" ]; then
+        echo "kein Schluessel in $SCHLUESSELDATEI" >&2
+        echo "  anlegen mit:  umask 077 && printf %s 'sk-…' > $SCHLUESSELDATEI" >&2
+        exit 1
+    fi
+    CWD=""
+    if [ -n "${1:-}" ] && [ -d "$1" ]; then CWD="$1"; shift; fi
+    [ -n "$CWD" ] && set -- --cwd "$CWD" "$@"
+
+    # Modell nur setzen, wenn keins angegeben wurde
+    case " $* " in *" --model "*|*" --model="*) ;; *) set -- --model "$ONLINE_MODELL" "$@" ;; esac
+    case " $* " in *" --base-url "*|*" --base-url="*) ;; *) set -- --base-url "$ONLINE_URL" "$@" ;; esac
+
+    # Ueber die Umgebung, nicht ueber die Kommandozeile: cmdline ist
+    # fuer jeden Nutzer lesbar, environ nur fuer den Eigentuemer.
+    JAJA_API_KEY=$(cat "$SCHLUESSELDATEI") exec java -jar "$JAR" "$@"
+fi
 
 if [ "$1" = "--liste" ]; then
     gefunden=0
