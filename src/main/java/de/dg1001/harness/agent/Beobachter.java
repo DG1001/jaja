@@ -39,8 +39,12 @@ public interface Beobachter {
                   a.usage().promptTokens(), budget);
         }
         @Override public void werkzeugFertig(ToolCall tc, Tool.ToolResult r) {
-            melde("  %s%s -> %d Zeichen", tc.name(), r.istFehler() ? " (Fehler)" : "",
-                  r.text() == null ? 0 : r.text().length());
+            // Mit Argument: ohne das war im Stapelbetrieb nicht rekonstruierbar,
+            // WAS ein Lauf getan hat -- nur wie viele Zeichen dabei herauskamen.
+            // Der Pruefstand liest die Schlusszeile, nicht diese, also aendert
+            // die zusaetzliche Spalte keine veroeffentlichte Messung.
+            melde("  %s%s -> %d Zeichen | %s", tc.name(), r.istFehler() ? " (Fehler)" : "",
+                  r.text() == null ? 0 : r.text().length(), tc.kurz());
         }
         @Override public void hinweis(String text) { melde("%s", text); }
 

@@ -50,6 +50,47 @@ public final class Workspace {
         return p;
     }
 
+    /**
+     * Sucht in einem Shell-Kommando nach Pfaden, die aus dem Arbeitsbereich
+     * herausfuehren, und beschreibt sie — oder gibt {@code null} zurueck.
+     *
+     * <p>Das ist eine <b>Heuristik zur Diagnose, keine Absicherung.</b> Sie
+     * sieht nur, was als Pfad im Kommando steht: nicht, was ein aufgerufenes
+     * Skript tut, nicht berechnete Pfade, nicht {@code $VAR}. Wer eine Grenze
+     * braucht, die haelt, braucht einen Container.
+     *
+     * <p>Gebaut nach einem Vorfall, der genau deshalb nicht aufzuklaeren war:
+     * ein Lauf hat ueber Nacht in einem fremden Projekt geschrieben, und das
+     * Protokoll hielt von jedem Werkzeugaufruf nur den Namen fest. Ein Hinweis
+     * hier haette gereicht, um zu wissen, welcher Lauf es war.
+     *
+     * <p>Systemverzeichnisse und {@code /tmp} gelten nicht als Ausbruch — sonst
+     * warnt jedes {@code /usr/bin/env} und der Hinweis geht im Rauschen unter.
+     */
+    public String verlaesstBereich(String kommando) {
+        if (kommando == null || kommando.isBlank()) return null;
+        java.util.LinkedHashSet<String> draussen = new java.util.LinkedHashSet<>();
+        for (String roh : kommando.split("[\\s;|&()<>\"']+")) {
+            String s = roh.trim();
+            // Nur was wie ein Pfad aussieht. Ein blosses "pytest" ist keiner.
+            if (s.isEmpty() || (!s.contains("/") && !s.startsWith("~"))) continue;
+            if (s.startsWith("-")) continue;                 // Schalter wie --dir=/x
+            if (s.startsWith("~")) s = System.getProperty("user.home") + s.substring(1);
+            Path p;
+            try { p = wurzel.resolve(s).normalize().toAbsolutePath(); }
+            catch (RuntimeException e) { continue; }
+            if (p.startsWith(wurzel)) continue;
+            String t2 = p.toString();
+            if (t2.startsWith("/usr") || t2.startsWith("/bin") || t2.startsWith("/sbin")
+             || t2.startsWith("/lib") || t2.startsWith("/etc") || t2.startsWith("/proc")
+             || t2.startsWith("/sys") || t2.startsWith("/dev") || t2.startsWith("/opt")
+             || t2.startsWith("/tmp") || t2.startsWith("/var/tmp")) continue;
+            draussen.add(t2);
+            if (draussen.size() >= 3) break;
+        }
+        return draussen.isEmpty() ? null : String.join(", ", draussen);
+    }
+
     /** Zusaetzliche Pruefung fuer existierende Dateien: folgt Symlinks und
      *  prueft das echte Ziel. */
     public Path pruefeVorhandenen(Path p) throws IOException {

@@ -139,7 +139,7 @@ public final class Anzeige implements Beobachter {
     @Override public void werkzeugFertig(ToolCall tc, Tool.ToolResult r) {
         String farbe = r.istFehler() ? Terminal.ROT : Terminal.GRUEN;
         String name  = padde(tc.name(), 6);
-        String arg   = kuerze(argument(tc), Math.max(20, breite - 40));
+        String arg   = kuerze(tc.kurz(), Math.max(20, breite - 40));
         String erg   = ergebnis(r);
 
         zeile("  " + farbe + "⏺" + Terminal.NORMAL + " " + Terminal.FETT + name
@@ -154,19 +154,6 @@ public final class Anzeige implements Beobachter {
     // ------------------------------------------------------------- Zutaten
 
     /** Das eine Argument, das den Aufruf kenntlich macht. */
-    private static String argument(ToolCall tc) {
-        try {
-            var m = Json.obj(Json.parse(tc.argumentsJson()));
-            for (String k : new String[]{"kommando", "pfad", "muster", "alt",
-                                         "datei", "stichwort"}) {
-                String v = Json.str(m.get(k));
-                if (v != null && !v.isBlank()) return v.replace("\n", "⏎");
-            }
-            return tc.argumentsJson();
-        } catch (RuntimeException e) {
-            return tc.argumentsJson();
-        }
-    }
 
     /** Ergebnisse einzeilig zusammenfassen -- die Ausgabe selbst sieht das
      *  Modell, der Mensch braucht nur zu wissen, dass etwas passiert ist. */

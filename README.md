@@ -102,7 +102,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--model <name>` | — | required |
 | `--base-url <url>` | `http://127.0.0.1:8888/v1` | |
 | `--api-key <key>` | `unused` | most local servers ignore it |
-| `--cwd <path>` | `.` | workspace root; nothing outside it is reachable |
+| `--cwd <path>` | `.` | workspace root; the file tools cannot leave it, `bash` can — see below |
 | `--prompt <text>` / `--prompt-file <path>` | — | one of them required |
 | `--context-window <n>` | `65536` | must match what the server was started with |
 | `--max-output <n>` | `16384` | |
@@ -112,6 +112,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--frei` | off | session: run `bash` without asking |
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
+| `--abgleich` | off | before finishing, ask the model to walk the task statement point by point |
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
@@ -167,6 +168,34 @@ away for tidiness.
 than once, nothing is changed and the model is told why. A silent multi-match
 is the most expensive failure in this class of tool — it surfaces only at test
 time, and by then the model is looking in the wrong place.
+
+#### `bash` is the one tool the workspace does not contain
+
+`glob`, `grep`, `read`, `write` and `edit` all resolve their paths through
+`Workspace`, which normalises them and rejects anything outside the root —
+including `a/../../etc/passwd` and symlinks that point out. **`bash` gets no
+such boundary.** A shell can go anywhere the user can, and closing that
+properly needs a container, not a path check.
+
+This is not hypothetical. An unattended overnight run wrote a complete task
+solution into an unrelated repository on the same machine, and the batch log
+recorded only `bash -> 39 Zeichen` — the command itself was never written down,
+so afterwards there was no way to tell which run had done it.
+
+Two changes came out of that, neither of them a lock:
+
+- **The batch log now carries the argument**, truncated at 200 characters, the
+  same summary the session UI has always shown. A log that does not say what a
+  tool did is worthless exactly when you need it.
+- **A command whose paths leave the workspace produces a notice**, listing
+  where it reached. System directories and `/tmp` are excluded or the notice
+  drowns in `/usr/bin/env`.
+
+It is a *heuristic for diagnosis*: it reads paths written in the command, so it
+cannot see inside a script it invokes, or a path assembled from a variable.
+Refusing instead of warning was considered and rejected — `pip`, `git` and
+neighbouring checkouts are legitimate reasons to reach out, and a harness that
+blocks them is one people disable.
 
 ## The session
 

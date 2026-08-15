@@ -56,7 +56,37 @@ public final class Messages {
     /** {@code argumentsJson} bleibt bewusst Zeichenkette: so liefern es die
      *  Server, und so muss es beim Zurueckschicken wieder hinein. Geparst wird
      *  erst im Werkzeug. */
-    public record ToolCall(String id, String name, String argumentsJson) {}
+    public record ToolCall(String id, String name, String argumentsJson) {
+
+        /** Hoechstlaenge der Kurzfassung — dieselbe Grenze wie beim Kuerzen
+         *  der Argumente im Verlauf. */
+        private static final int GROSS = 200;
+
+        /**
+         * Das wesentliche Argument in einer Zeile, fuer Protokoll und Anzeige.
+         *
+         * <p>Bis ein Lauf ueber Nacht in einem fremden Projekt geschrieben hat,
+         * protokollierte der Stapelbetrieb nur den Werkzeugnamen. Damit liess
+         * sich hinterher nicht feststellen, welcher Lauf es war — das
+         * Protokoll enthielt die Information schlicht nicht.
+         */
+        public String kurz() {
+            String v = null;
+            try {
+                var m = Json.obj(Json.parse(argumentsJson));
+                for (String k : new String[]{"kommando", "pfad", "muster", "alt",
+                                             "datei", "stichwort"}) {
+                    String x = Json.str(m.get(k));
+                    if (x != null && !x.isBlank()) { v = x; break; }
+                }
+            } catch (RuntimeException e) {
+                // kaputtes JSON: dann eben das Rohe
+            }
+            if (v == null) v = argumentsJson == null ? "" : argumentsJson;
+            v = v.replace("\n", "\u23ce");
+            return v.length() > GROSS ? v.substring(0, GROSS) + "…" : v;
+        }
+    }
 
     // -------------------------------------------------------- Abbruchgrund
 

@@ -106,7 +106,8 @@ public final class Main {
 
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
-                    o.containsKey("karte"), herkunft(baseUrl));
+                    o.containsKey("karte"), o.containsKey("abgleich"),
+                    herkunft(baseUrl));
             return;
         }
 
@@ -117,7 +118,8 @@ public final class Main {
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
-                                ws, budget, maxZuege, laut);
+                                ws, budget, maxZuege, laut)
+                          .mitAbgleich(o.containsKey("abgleich"));
 
         long t0 = System.nanoTime();
         Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);
@@ -145,7 +147,7 @@ public final class Main {
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen,
                                 Systemprompt.Ergebnis sp, boolean mitKarte,
-                                String herkunft) throws Exception {
+                                boolean mitAbgleich, String herkunft) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -159,7 +161,8 @@ public final class Main {
             // Statuszeile wieder -- gemessen an einem Server, der nicht antwortete.
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(mitKarte), ws, budget,
-                                    maxZuege, anzeige);
+                                    maxZuege, anzeige)
+                              .mitAbgleich(mitAbgleich);
             if (sp.quelle() != null)
                 anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
                         + " (" + sp.zeichen() + " Zeichen)");
@@ -238,6 +241,8 @@ public final class Main {
               --context-window <n>      Vorgabe 65536
               --max-output <n>          Vorgabe 16384
               --max-turns <n>           Vorgabe 60
+              --abgleich                vor dem Abschluss einmal die Aufgaben-
+                                        stellung Punkt fuer Punkt abfragen
               --timeout-minutes <n>     je Anfrage, Vorgabe 25
               --leise                   keine Fortschrittsmeldungen
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren

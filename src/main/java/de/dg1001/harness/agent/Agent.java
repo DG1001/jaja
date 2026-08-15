@@ -69,6 +69,17 @@ public final class Agent {
 
     public Agent mitFreigabe(Freigabe f) { this.freigabe = f; return this; }
 
+    /**
+     * Fragt vor dem Abschluss einmal die Aufgabenstellung Punkt fuer Punkt ab.
+     *
+     * <p>Vorgabe aus, weil es die Vergleichbarkeit mit den veroeffentlichten
+     * Messwerten aendert. Erst messen, dann zur Vorgabe machen -- so wie bei
+     * der Quellenkarte, die diese Pruefung nicht bestanden hat.
+     */
+    public Agent mitAbgleich(boolean an) { this.abgleich = an; return this; }
+
+    private boolean abgleich = false;
+
     /** Bricht den laufenden Zug ab. Darf aus einem anderen Faden gerufen
      *  werden -- genau dafuer ist sie da. */
     public void brichAb() { abbruch.set(true); }
@@ -90,6 +101,46 @@ public final class Agent {
             Plane nicht weiter vor. Fang mit einem einzigen konkreten Schritt an \
             und rufe jetzt ein Werkzeug auf.""";
 
+    /**
+     * Wie viele fehlgeschlagene Werkzeugaufrufe hintereinander als Schleife
+     * gelten.
+     *
+     * <p>Kalibriert an echten Laeufen: der eine Lauf, der sich festgefressen
+     * hat (Zirkelimport, 80 Zuege, Zuglimit) hatte eine Folge von <b>zehn</b>
+     * Fehlschlaegen am Stueck. Die erfolgreichen Laeufe derselben Modelle kamen
+     * auf hoechstens fuenf. Sechs trennt beides auf den vorliegenden Daten --
+     * das sind fuenf Laeufe, also eher eine Faustregel als eine Schwelle. Sie
+     * darf ruhig zu frueh greifen: ein Anstoss kostet einen Zug, eine Schleife
+     * kostet den Lauf.
+     */
+    private static final int MAX_FEHLERFOLGE = 6;
+
+    private static final String SCHLEIFE = """
+            Die letzten %d Werkzeugaufrufe sind alle fehlgeschlagen. Hoer auf, \
+            weiter zu reparieren. Lies die beteiligten Dateien vollstaendig, \
+            schreib hin, was du ueber den Zustand sicher weisst und was du nur \
+            vermutest, und waehle danach einen anderen Ansatz -- nicht denselben \
+            noch einmal.""";
+
+    /**
+     * Nachgefragt, bevor ein Abschluss ohne Werkzeugaufruf als fertig gilt.
+     *
+     * <p>Der haeufigste Fehler im Pruefstand war nicht Unvermoegen, sondern ein
+     * Modell, das etwas Funktionierendes gebaut hat statt des Verlangten, und
+     * dessen eigene Tests dazu gruen waren. Dreimal ist dieselbe Aufgabe an
+     * derselben Stelle gescheitert -- an einem Importpfad, den die Aufgabe
+     * woertlich nennt. Und der einzige ueber zwei Laeufe stabile Fehler stand
+     * im Fliesstext der Aufgabe, nicht in der Signaturliste darunter.
+     */
+    private static final String ABGLEICH = """
+            Bevor das als fertig gilt: geh die Aufgabenstellung Satz fuer Satz \
+            durch. Zaehle JEDE Anforderung einzeln auf -- auch die, die nur im \
+            Fliesstext stehen und nicht in einer Signaturliste -- und schreib zu \
+            jeder, ob sie erfuellt ist und an welcher Stelle im Code. Wo etwas \
+            fehlt oder du es nicht geprueft hast, sag das offen und hol es nach. \
+            Dass deine eigenen Tests gruen sind, ist keine Antwort auf diese \
+            Frage.""";
+
     public Ergebnis lauf(String systemPrompt, String aufgabe) {
         Transcript t = new Transcript(schaetzer);
         t.beginne(systemPrompt, aufgabe);
@@ -110,6 +161,8 @@ public final class Agent {
 
         int entartet = 0;
         int aufrufeGesamt = 0;
+        int fehlerfolge = 0;
+        boolean abgeglichen = false;
 
         for (int zug = 1; zug <= maxZuege; zug++) {
 
@@ -166,9 +219,18 @@ public final class Agent {
             entartet = 0;
 
             // ------------------------------------------------------ fertig
-            if (!a.message().hatWerkzeugaufrufe())
+            if (!a.message().hatWerkzeugaufrufe()) {
+                // Einmal nachfragen, bevor das Modell selbst entscheidet, dass
+                // es fertig ist. Nur einmal -- sonst laeuft es im Kreis.
+                if (abgleich && !abgeglichen) {
+                    abgeglichen = true;
+                    beobachter.hinweis("gleiche gegen die Aufgabenstellung ab");
+                    t.add(new UserMessage(ABGLEICH));
+                    continue;
+                }
                 return new Ergebnis(Status.FERTIG, zug, aufrufeGesamt,
                                     a.message().content(), null);
+            }
 
             // ------------------------------------------------- Werkzeuge
             List<ToolCall> aufrufe = a.message().toolCalls();
@@ -182,6 +244,18 @@ public final class Agent {
                 Tool.ToolResult r = ergebnisse.get(i);
                 t.addWerkzeugErgebnis(aufrufe.get(i), r.text());
                 beobachter.werkzeugFertig(aufrufe.get(i), r);
+                fehlerfolge = r.istFehler() ? fehlerfolge + 1 : 0;
+            }
+
+            // -------------------------------------------------- Schleife
+            // Nicht der einzelne Fehlschlag ist das Problem, sondern die Folge:
+            // ein Modell, das dieselbe Stelle immer wieder anders anfasst und
+            // dabei nie zurueckgeht, um den ganzen Zustand zu lesen.
+            if (fehlerfolge >= MAX_FEHLERFOLGE) {
+                beobachter.hinweis(String.format(
+                        "%d Fehlschlaege in Folge, stosse zum Umdenken an", fehlerfolge));
+                t.add(new UserMessage(String.format(SCHLEIFE, fehlerfolge)));
+                fehlerfolge = 0;
             }
         }
 
@@ -223,6 +297,15 @@ public final class Agent {
     private Tool.ToolResult fuehreEinesAus(ToolCall tc) {
         String grund = freigabe.pruefe(tc);
         if (grund != null) return Tool.ToolResult.fehler(grund);
+        // bash ist das einzige Werkzeug ohne Eingrenzung -- die Dateiwerkzeuge
+        // gehen alle durch Workspace.aufloesen. Ein Hinweis statt eines Verbots:
+        // pip, git und Nachbarprojekte sind legitime Gruende, hinauszugreifen.
+        // Wer es hinterher wissen will, findet es jetzt wenigstens im Protokoll.
+        if ("bash".equals(tc.name())) {
+            String draussen = ws.verlaesstBereich(tc.kurz());
+            if (draussen != null)
+                beobachter.hinweis("ausserhalb des Arbeitsbereichs: " + draussen);
+        }
         beobachter.werkzeugStart(tc);
         return registry.fuehreAus(tc, ws);
     }
