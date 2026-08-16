@@ -69,17 +69,6 @@ public final class Agent {
 
     public Agent mitFreigabe(Freigabe f) { this.freigabe = f; return this; }
 
-    /**
-     * Fragt vor dem Abschluss einmal die Aufgabenstellung Punkt fuer Punkt ab.
-     *
-     * <p>Vorgabe aus, weil es die Vergleichbarkeit mit den veroeffentlichten
-     * Messwerten aendert. Erst messen, dann zur Vorgabe machen -- so wie bei
-     * der Quellenkarte, die diese Pruefung nicht bestanden hat.
-     */
-    public Agent mitAbgleich(boolean an) { this.abgleich = an; return this; }
-
-    private boolean abgleich = false;
-
     /** Bricht den laufenden Zug ab. Darf aus einem anderen Faden gerufen
      *  werden -- genau dafuer ist sie da. */
     public void brichAb() { abbruch.set(true); }
@@ -132,14 +121,23 @@ public final class Agent {
      * woertlich nennt. Und der einzige ueber zwei Laeufe stabile Fehler stand
      * im Fliesstext der Aufgabe, nicht in der Signaturliste darunter.
      */
-    private static final String ABGLEICH = """
-            Bevor das als fertig gilt: geh die Aufgabenstellung Satz fuer Satz \
-            durch. Zaehle JEDE Anforderung einzeln auf -- auch die, die nur im \
-            Fliesstext stehen und nicht in einer Signaturliste -- und schreib zu \
-            jeder, ob sie erfuellt ist und an welcher Stelle im Code. Wo etwas \
-            fehlt oder du es nicht geprueft hast, sag das offen und hol es nach. \
-            Dass deine eigenen Tests gruen sind, ist keine Antwort auf diese \
-            Frage.""";
+
+    /**
+     * Angehaengt, wenn ein Lauf ohne einen einzigen Werkzeugaufruf enden will.
+     *
+     * <p>{@link #ANSTOSS} deckt nur den Fall ab, dass die Ausgabegrenze erreicht
+     * wurde. Gemessen wurde aber auch das hier: erster Zug, {@code STOP}, vier
+     * Ausgabetokens, Inhalt {@code "[README]"} — und der Harness meldete FERTIG
+     * mit Rueckgabewert 0 auf einem unberuehrten Verzeichnis. In rund sechzig
+     * Aufgabenlaeufen zweimal aufgetreten; beide Male ging die Aufgabe als
+     * Modellergebnis in eine Messung ein, obwohl nichts versucht worden war.
+     */
+    private static final String NICHTS_GETAN = """
+            Du hast noch kein einziges Werkzeug benutzt und damit weder den \
+            vorhandenen Stand gelesen noch etwas geaendert. Falls die Aufgabe \
+            Arbeit am Verzeichnis verlangt, fang jetzt damit an: sieh dir zuerst \
+            an, was da ist. Falls sie wirklich ohne Werkzeug zu beantworten war, \
+            sag das ausdruecklich und begruende es.""";
 
     public Ergebnis lauf(String systemPrompt, String aufgabe) {
         Transcript t = new Transcript(schaetzer);
@@ -162,7 +160,7 @@ public final class Agent {
         int entartet = 0;
         int aufrufeGesamt = 0;
         int fehlerfolge = 0;
-        boolean abgeglichen = false;
+        boolean untaetigAngestossen = false;
 
         for (int zug = 1; zug <= maxZuege; zug++) {
 
@@ -220,12 +218,14 @@ public final class Agent {
 
             // ------------------------------------------------------ fertig
             if (!a.message().hatWerkzeugaufrufe()) {
-                // Einmal nachfragen, bevor das Modell selbst entscheidet, dass
-                // es fertig ist. Nur einmal -- sonst laeuft es im Kreis.
-                if (abgleich && !abgeglichen) {
-                    abgeglichen = true;
-                    beobachter.hinweis("gleiche gegen die Aufgabenstellung ab");
-                    t.add(new UserMessage(ABGLEICH));
+                // Fertig ohne je ein Werkzeug angefasst zu haben: das ist bei
+                // einer Arbeitsaufgabe fast immer ein Missverstaendnis, kein
+                // Ergebnis. Einmal anstossen, dann gelten lassen -- eine reine
+                // Wissensfrage darf ohne Werkzeug beantwortet werden.
+                if (aufrufeGesamt == 0 && !untaetigAngestossen) {
+                    untaetigAngestossen = true;
+                    beobachter.hinweis("Abschluss ohne jeden Werkzeugaufruf, stosse an");
+                    t.add(new UserMessage(NICHTS_GETAN));
                     continue;
                 }
                 return new Ergebnis(Status.FERTIG, zug, aufrufeGesamt,

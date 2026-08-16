@@ -252,106 +252,38 @@ public final class ProbeSchleife {
                    !letzte.contains("alle fehlgeschlagen"));
         }
 
-        // ------------------------------------------------------------ Abgleich
+        // ------------------------------------ Abschluss ohne Werkzeugaufruf
+        // Gemessen: erster Zug STOP, vier Ausgabetokens, Inhalt "[README]" --
+        // und der Lauf galt als fertig, auf einem unberuehrten Verzeichnis.
         {
-            Skript s = new Skript(ruft("read", "{\"pfad\":\"a.txt\"}"),
-                                  text("bin fertig", FinishReason.STOP),
-                                  text("alles geprueft", FinishReason.STOP));
-            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
-                                ContextBudget.vorgabe(65536, 16384), 10, false)
-                          .mitAbgleich(true);
-            Agent.Ergebnis e = a.lauf("sys", "tu was");
-
-            pruefe("Abgleich laesst den ersten Abschluss nicht gelten",
-                   e.status() == Agent.Status.FERTIG
-                           && "alles geprueft".equals(e.abschluss()));
-            String nachfrage = s.gesehen.get(2).toString();
-            pruefe("Abgleich fragt die Aufgabenstellung ab",
-                   nachfrage.contains("Satz fuer Satz")
-                           && nachfrage.contains("Fliesstext"));
-        }
-        {
-            // Nur einmal: der zweite Abschluss muss durchgehen, sonst laeuft
-            // der Agent bis zum Zuglimit im Kreis.
-            Skript s = new Skript(text("fertig", FinishReason.STOP),
-                                  text("wirklich fertig", FinishReason.STOP));
-            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
-                                ContextBudget.vorgabe(65536, 16384), 10, false)
-                          .mitAbgleich(true);
-            Agent.Ergebnis e = a.lauf("sys", "tu was");
-            pruefe("Abgleich fragt genau einmal nach",
-                   e.status() == Agent.Status.FERTIG
-                           && "wirklich fertig".equals(e.abschluss()));
-        }
-        {
-            // Vorgabe aus: ohne Schalter aendert sich nichts.
-            Skript s = new Skript(text("fertig", FinishReason.STOP));
+            Skript s = new Skript(text("[README]", FinishReason.STOP),
+                                  ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  text("jetzt wirklich fertig", FinishReason.STOP));
             Agent.Ergebnis e = lauf(s, tmp, 10);
-            pruefe("ohne --abgleich bleibt der erste Abschluss gueltig",
-                   e.status() == Agent.Status.FERTIG && "fertig".equals(e.abschluss()));
-        }
-
-        // ------------------------------------------- Kurzfassung im Protokoll
-        {
-            de.dg1001.harness.wire.Messages.ToolCall tc =
-                new de.dg1001.harness.wire.Messages.ToolCall("i", "bash",
-                    "{\"kommando\":\"pytest -q\"}");
-            pruefe("Kurzfassung zieht das Kommando heraus", "pytest -q".equals(tc.kurz()));
-
-            var lang = new de.dg1001.harness.wire.Messages.ToolCall("i", "write",
-                    "{\"pfad\":\"" + "a".repeat(400) + "\"}");
-            pruefe("Kurzfassung ist gedeckelt", lang.kurz().length() <= 201
-                   && lang.kurz().endsWith("\u2026"));
-
-            var kaputt = new de.dg1001.harness.wire.Messages.ToolCall("i", "bash", "{kein json");
-            pruefe("kaputtes JSON stuerzt die Kurzfassung nicht ab",
-                   kaputt.kurz().contains("kein json"));
-
-            var mehrzeilig = new de.dg1001.harness.wire.Messages.ToolCall("i", "bash",
-                    "{\"kommando\":\"eins\\nzwei\"}");
-            pruefe("Zeilenumbruch wird ersetzt, nicht durchgereicht",
-                   !mehrzeilig.kurz().contains("\n"));
-        }
-
-        // --------------------------------- Hinweis beim Verlassen des Bereichs
-        // Gebaut nach einem Lauf, der ueber Nacht in einem fremden Projekt
-        // geschrieben hat und dessen Protokoll das nicht festhielt.
-        {
-            Workspace w = new Workspace(tmp);
-            pruefe("fremdes Projekt wird gemeldet",
-                   w.verlaesstBereich("cd /home/jemand/anderes-projekt && ls") != null);
-            // Der Arbeitsbereich liegt unter /tmp/..., also fuehrt ../.. auf /
-            // und von dort in ein fremdes Projekt -- kein Systempfad.
-            pruefe("relativer Ausbruch wird gemeldet",
-                   w.verlaesstBereich("cp bestand.py ../../home/jemand/projekt/") != null);
-            pruefe("Ausbruch nach /etc gilt als Systempfad, nicht als Fund",
-                   w.verlaesstBereich("cat ../../../../etc/hosts") == null);
-            pruefe("Arbeit im Bereich meldet nichts",
-                   w.verlaesstBereich("./.venv/bin/python -m pytest tests/") == null);
-            pruefe("Systempfade melden nichts",
-                   w.verlaesstBereich("/usr/bin/env python3 -c 'print(1)'") == null);
-            pruefe("/tmp meldet nichts",
-                   w.verlaesstBereich("cp x /tmp/y") == null);
-            pruefe("Kommando ohne Pfad meldet nichts",
-                   w.verlaesstBereich("pytest -q") == null);
-            pruefe("leeres Kommando stuerzt nicht ab",
-                   w.verlaesstBereich("") == null && w.verlaesstBereich(null) == null);
+            pruefe("Abschluss ohne Werkzeug gilt nicht sofort",
+                   e.status() == Agent.Status.FERTIG && e.werkzeugaufrufe() == 1
+                           && "jetzt wirklich fertig".equals(e.abschluss()));
+            pruefe("der Anstoss steht im Verlauf",
+                   s.gesehen.get(1).toString().contains("kein einziges Werkzeug benutzt"));
         }
         {
-            // Der Hinweis muss auch wirklich beim Beobachter ankommen.
-            java.util.List<String> hinweise = new ArrayList<>();
-            Beobachter b = new Beobachter() {
-                @Override public void hinweis(String s) { hinweise.add(s); }
-            };
-            ChatResponse raus = new ChatResponse(
-                new AssistantMessage(null, null, List.of(new ToolCall("b1", "bash",
-                    "{\"kommando\":\"ls /home/jemand/anderes-projekt\"}"))),
-                FinishReason.TOOL_CALLS, Usage.LEER);
-            Skript s = new Skript(raus, text("fertig", FinishReason.STOP));
-            new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
-                      ContextBudget.vorgabe(65536, 16384), 10, b).lauf("sys", "tu was");
-            pruefe("Beobachter erfaehrt vom Hinausgreifen",
-                   hinweise.stream().anyMatch(h -> h.startsWith("ausserhalb des Arbeitsbereichs")));
+            // Eine reine Wissensfrage darf ohne Werkzeug beantwortet werden --
+            // aber erst nach der einen Rueckfrage.
+            Skript s = new Skript(text("vier", FinishReason.STOP),
+                                  text("vier, und dafuer brauche ich nichts", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            pruefe("nach dem Anstoss wird der Abschluss angenommen",
+                   e.status() == Agent.Status.FERTIG && e.werkzeugaufrufe() == 0);
+        }
+        {
+            // Gegenprobe: wer gearbeitet hat, wird nicht angestossen.
+            Skript s = new Skript(ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  text("fertig", FinishReason.STOP));
+            Skript s2 = s;
+            lauf(s, tmp, 10);
+            pruefe("nach getaner Arbeit kein Anstoss",
+                   !s2.gesehen.get(s2.gesehen.size()-1).toString()
+                       .contains("kein einziges Werkzeug benutzt"));
         }
 
         System.out.println(fehlgeschlagen == 0

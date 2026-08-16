@@ -112,7 +112,6 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--frei` | off | session: run `bash` without asking |
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
-| `--abgleich` | off | before finishing, ask the model to walk the task statement point by point |
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
@@ -726,6 +725,27 @@ versus state that does not. The handover writes the second and never touches
 the first.
 
 ## Design decisions that came from measurements
+
+### A feature that was built, measured and removed
+
+`--abgleich` asked the model, before it was allowed to finish, to walk the task
+statement sentence by sentence and state for each requirement whether it was met
+and where. It targets the dominant failure in the benchmark it was written for:
+models that build something working instead of the thing that was specified.
+
+**Twenty runs across two series, no measurable effect** (paired t = −0.07 and
+−0.31 on four degrees of freedom). The logs say why: in four of six inspected
+cases the question produced **no further tool call at all**. The model ticked
+its requirements off in prose and stopped — once while `from typing import
+dict` sat in the file, which broke every import including its own tests.
+
+A model that believes it is finished will confirm that belief when asked. The
+check enquired about beliefs where it needed observations. "Walk the
+requirements" is a question; "run the tests and show me the output" is a tool
+call, and only the second can be wrong in a way the model has to notice.
+
+It is gone rather than switched off. A flag nobody should set is a worse thing
+to ship than a lesson written down.
 
 Not from taste. Each of these was something a real run did wrong first.
 
