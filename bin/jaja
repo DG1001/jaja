@@ -35,9 +35,14 @@ if [ -z "$JAR" ]; then
 fi
 
 # Fragt einen Port nach seinem Modellnamen. Leer, wenn dort nichts antwortet.
+#
+# Das Leerzeichen im Muster ist noetig, nicht kosmetisch: vLLM liefert
+# kompaktes JSON ("id":"..."), LM Studio setzt es formatiert ("id": "...").
+# Ohne " *" findet das Muster dort nichts, und --liste meldet "kein
+# Modellserver", waehrend einer laeuft.
 modell_auf() {
     curl -s -m 2 "http://127.0.0.1:$1/v1/models" 2>/dev/null \
-        | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4
+        | grep -oE '"id": *"[^"]*"' | head -1 | cut -d'"' -f4
 }
 
 # ------------------------------------------------------------------ online
