@@ -28,6 +28,33 @@ public final class Elision {
     /** Unter diesem Anteil gilt ein Durchgang als wirkungslos. */
     private static final double MINDESTWIRKUNG = 0.05;
 
+    /**
+     * Wohin gekuerzt wird, als Anteil des nutzbaren Platzes.
+     *
+     * <p>Ausloesen und Aufhoeren brauchen verschiedene Marken. Vorher war
+     * beides {@link ContextBudget#schwelle()}: gekuerzt wurde, bis es
+     * <i>gerade eben</i> wieder passte. In einem gemessenen Lauf landete eine
+     * Kuerzung 131 Token unter der Schwelle, der naechste Zug riss sie wieder,
+     * und die uebernaechste Kuerzung folgte unmittelbar.
+     *
+     * <p>Das ist teuer, weil eine Kuerzung nicht nur Kontext kostet, sondern
+     * Rechenzeit: llama.cpp behaelt den KV-Cache nur, solange das Praefix
+     * unveraendert bleibt. Elision aendert die <em>aeltesten</em> Eintraege,
+     * also weit vorne — der Server rechnet ab dort alles neu. Gemessen auf
+     * einem dichten 27B faellt der Prefill dabei von rund 1150 auf 120 Token/s;
+     * eine Kuerzung kostete 16 bis 43 Sekunden, im Mittel 29.
+     *
+     * <p>Tiefer kuerzen heisst seltener kuerzen. Ueber drei Laeufe je Variante,
+     * identische Aufgabe und Fenster: sechs Kuerzungen wurden zu zwei, der
+     * Median fiel von 523 auf 249 Sekunden, die Spannen ueberlappten nicht
+     * (425–1030 gegen 247–298). Die Zugzahl stieg dabei nicht — die Sorge,
+     * tieferes Kuerzen nehme dem Modell Noetiges weg, trat nicht ein.
+     *
+     * <p>0,45 ist gepruefte Hausnummer, kein Optimum. Jeder Wert deutlich
+     * unter der Ausloeseschwelle duerfte den Hauptteil bringen.
+     */
+    private static final double ZIEL = 0.45;
+
     private final ContextBudget budget;
     private int durchgaenge = 0;
 
@@ -104,7 +131,9 @@ public final class Elision {
         int neu = t.schaetzeTokens();
         double wirkung = stand[0] == 0 ? 0 : (double) (stand[0] - neu) / stand[0];
         stand[0] = neu;
-        if (!budget.mussKuerzen(neu)) return true;
+        // Nicht bis zur Ausloeseschwelle, sondern bis zum Ziel darunter --
+        // sonst ist der naechste Zug schon wieder darueber. Siehe ZIEL.
+        if (neu <= (int) (budget.nutzbareEingabe() * ZIEL)) return true;
         return ersetzt == 0 && wirkung < MINDESTWIRKUNG;
     }
 
