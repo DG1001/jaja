@@ -141,7 +141,12 @@ public final class Agent {
 
     public Ergebnis lauf(String systemPrompt, String aufgabe) {
         Transcript t = new Transcript(schaetzer);
-        t.beginne(systemPrompt, aufgabe);
+        // Ein Blick auf die Umgebung, bevor der erste Zug faellt: der Agent
+        // fragt sonst zwei bis fuenf Zuege lang, wo er ist und was da ist.
+        // Bewusst in die Aufgabe hinein und nicht als eigene Nachricht --
+        // der Systemprompt bleibt byte-gleich, der Praefix-Cache ueber
+        // Systemprompt und Werkzeugbeschreibungen bleibt heil.
+        t.beginne(systemPrompt, Umgebungsbild.anhaengen(aufgabe, ws));
         return lauf(t);
     }
 

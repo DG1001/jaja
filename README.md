@@ -918,10 +918,11 @@ src/main/java/de/dg1001/harness/
   wire/                  transport: Json, Messages, ChatClient, Retry
   tools/                 the six tools, registry, spilling
   ws/Workspace.java      path confinement
-  agent/                 loop, transcript, elision, budget, estimator
+  agent/                 loop, transcript, elision, budget, estimator,
+                         environment snapshot
   karte/                 source map: walk, store, ranking, descriptions
   tui/                   terminal, line editor, display, session
-src/test/java/…          seven probe suites
+src/test/java/…          eight probe suites
 pom.xml                  Maven; no dependencies
 ```
 
