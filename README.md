@@ -747,6 +747,49 @@ call, and only the second can be wrong in a way the model has to notice.
 It is gone rather than switched off. A flag nobody should set is a worse thing
 to ship than a lesson written down.
 
+### A feature that was built, measured, and shipped with the caveat attached
+
+`Umgebungsbild` looks at the working directory once, before the first turn, and
+appends what it found to the task: directory, contents, the tool versions that
+match what is actually there, `.venv`, git state. Five lines, about 50 tokens.
+
+The idea is not mine. It is the one substantive change in the harness that
+[Meta-Harness](https://arxiv.org/abs/2603.28052) discovered for TerminalBench-2,
+where it is justified with "saves 2-5 early exploration turns". On a hosted
+model that is a second; on a local one every turn is ten seconds to minutes,
+plus a tool call and its result sitting in the context for the rest of the run.
+
+Unlike the reference implementation it does not ask a fixed list of tools.
+It looks at what is *there* — marker files like `pom.xml` **and** the extensions
+actually present — and asks only about those. Marker files alone are not enough:
+the benchmark's `t1-debug` is a Python project with no `pyproject.toml`, just
+`kasse/` and `tests/`. And the extension scan had to go wide rather than deep,
+or it misses jaja's own `.java` files five directories down.
+
+**Measured on `t1-debug`, five runs each, alternating:**
+
+| | without | with |
+|---|---|---|
+| turns (median) | 39 | **17** |
+| turns to first write | 12 | **6** |
+| seconds (median) | 177 | **75** |
+| input tokens (median) | 345,188 | **78,989** |
+| hidden tests | 15,15,15,15,**5** | 15,15,15,15,15 |
+
+Only `t1-debug`, because it is the one task of the four that does not run into
+the 80-turn ceiling. Where the ceiling sets the turn count, a saving at the
+start cannot show up in the total — across all four tasks the totals are a wash
+(224 turns against 226), which is exactly what that means.
+
+**And the caveat, which belongs next to the numbers:** a permutation test over
+five runs per side gives **p = 0.238**. That is not significant, and at n=5 it
+structurally cannot be, however clean the separation looks. The direction is
+consistent across every metric and the mechanism is verified individually —
+turn 1 carries 86 more tokens, the first write moves earlier in all four tasks —
+but the percentages above are not established. They are what was seen, not what
+was proven.
+
+
 Not from taste. Each of these was something a real run did wrong first.
 
 **Stalled turns get a nudge, not a shrug.** The reason this repo exists; see
