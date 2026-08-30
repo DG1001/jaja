@@ -37,6 +37,18 @@ public interface Beobachter {
             melde("Zug %d: %s, %d Werkzeug(e), %d/%d Token",
                   nummer, a.finishReason(), a.message().toolCalls().size(),
                   a.usage().promptTokens(), budget);
+            // Und das, was das Modell selbst dazu sagt.
+            //
+            // Ohne diese Zeile stehen im Protokoll nur Zahlen und Werkzeug-
+            // namen -- man sieht, DASS gearbeitet wird, aber nicht, woran. Bei
+            // einem zweistuendigen Lauf ist das der Unterschied zwischen "es
+            // baut gerade die Speicherschicht" und Ratenmuessen.
+            //
+            // Gekuerzt, weil der Text ganze Absaetze lang sein kann. Wer alles
+            // sehen will, nimmt die Sitzung; hier geht es um den Stapelbetrieb.
+            String gesagt = a.message().content();
+            if (gesagt == null || gesagt.isBlank()) gesagt = a.message().reasoningContent();
+            sag(gesagt);
         }
         @Override public void werkzeugFertig(ToolCall tc, Tool.ToolResult r) {
             // Mit Argument: ohne das war im Stapelbetrieb nicht rekonstruierbar,
@@ -50,6 +62,16 @@ public interface Beobachter {
 
         private void melde(String fmt, Object... a) {
             System.err.println("[harness] " + String.format(fmt, a));
+        }
+
+        /** Hoechstens so viele Zeichen des Modelltextes je Zug. */
+        private static final int MAX_TEXT = 220;
+
+        private void sag(String text) {
+            if (text == null || text.isBlank()) return;
+            String s = text.strip().replaceAll("\\s+", " ");
+            if (s.length() > MAX_TEXT) s = s.substring(0, MAX_TEXT) + " ...";
+            melde("  \u00bb%s\u00ab", s);
         }
     };
 }

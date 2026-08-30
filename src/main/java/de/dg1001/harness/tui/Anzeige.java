@@ -128,6 +128,26 @@ public final class Anzeige implements Beobachter {
         this.token = a.usage().promptTokens();
         this.tokenBudget = budget;
         this.taetigkeit = a.message().hatWerkzeugaufrufe() ? "arbeitet" : "antwortet";
+        // Was das Modell zu diesem Zug sagt, ueber die Statuszeile hinaus.
+        //
+        // Bisher stand hier nur die Statuszeile: Zugnummer, Token, "arbeitet".
+        // Man sah, DASS gearbeitet wird, aber nicht, woran -- bei einem langen
+        // Lauf ist das der Unterschied zwischen "es baut gerade die
+        // Speicherschicht" und Ratenmuessen.
+        //
+        // Nur bei Zuegen MIT Werkzeugaufruf: der Schlusszug ohne Werkzeug ist
+        // die eigentliche Antwort, und die druckt die Sitzung ohnehin ganz.
+        // Hier waere sie doppelt und einmal davon verstuemmelt.
+        // Faellt auf den Denkteil zurueck, wenn nichts gesagt wurde: bei
+        // "mach weiter" arbeitet ein Modell oft wortlos los, und dann steht
+        // das Vorhaben nur dort. Der Denkteil ist roher und haeufig englisch,
+        // deshalb als zweite Wahl und mit vorangestelltem Punkt kenntlich.
+        String gesagt = a.message().content();
+        boolean gedacht = gesagt == null || gesagt.isBlank();
+        if (gedacht) gesagt = a.message().reasoningContent();
+        if (a.message().hatWerkzeugaufrufe() && gesagt != null && !gesagt.isBlank())
+            zeile("  " + Terminal.GRAU + (gedacht ? "· " : "")
+                  + kuerze(gesagt.strip(), Math.max(30, breite - 6)) + Terminal.NORMAL);
         synchronized (schloss) { statusZeichnen(); System.out.flush(); }
     }
 
