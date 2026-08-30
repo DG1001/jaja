@@ -747,6 +747,47 @@ call, and only the second can be wrong in a way the model has to notice.
 It is gone rather than switched off. A flag nobody should set is a worse thing
 to ship than a lesson written down.
 
+### A second one, removed faster: `--klaeren`
+
+Batch jaja never asks what you meant. Told "build me a small wiki app" it picks
+the framework, the storage, the scope — all of it — and starts writing. opencode
+given the same sentence and the same model asked about framework and features
+first. So the flag: append an instruction to ask up to three questions before
+starting.
+
+**It changed nothing.** Four turns with the flag, four without, same model: tool
+calls throughout, not one question, and the run *with* the flag wrote more files
+than the one without.
+
+The first guess was the wording — the addition sat behind "start with a concrete
+first step rather than planning everything up front", so the older, blunter
+sentence won. Rebuilt to *replace* that sentence instead of trailing it. Still
+nothing. The second guess was quantisation, and it was wrong too: the
+counter-example is the same model under opencode, where the questions came.
+
+The answer was in this repo's own code the whole time. **A question is a turn
+with no tool call**, and jaja is built to prevent exactly that:
+
+```java
+// Fertig ohne je ein Werkzeug angefasst zu haben: das ist bei
+// einer Arbeitsaufgabe fast immer ein Missverstaendnis, kein Ergebnis.
+if (aufrufeGesamt == 0 && !untaetigAngestossen) { … NICHTS_GETAN … }
+```
+
+`NICHTS_GETAN` and `ANSTOSS` push a question back toward acting; if one got
+through, the run would end `FERTIG`. And in batch mode there is nobody to
+answer it — `--prompt` is one-way. The feature could not work where it was
+being tested.
+
+It belongs in the session, where a human is sitting there, and it would need
+those two nudges suspended while it is on. That is a different feature than the
+one that was built, so this one is gone rather than half-finished.
+
+The transferable part is not about clarifying questions. **Two contradictory
+instructions in one prompt are resolved by the model, not by your flag** — and
+before blaming the prompt or the quantisation, check whether the loop permits
+the behaviour at all.
+
 ### A feature that was built, measured, and shipped with the caveat attached
 
 `Umgebungsbild` looks at the working directory once, before the first turn, and
