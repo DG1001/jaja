@@ -90,6 +90,18 @@ public final class ProbeSystemprompt {
         pruefe("Verzeichnis mit dem Namen wird uebergangen",
                Systemprompt.baue(GRUND, ws, null, false).prompt(), GRUND);
 
+        // ------------------------------------------- Hinweis auf die Grenze
+        // In Zeilen, nicht in Token: eine Tokenzahl kann das Modell nicht auf
+        // sein eigenes Schreiben abbilden.
+        String h = Systemprompt.ausgabehinweis(8192);
+        pruefe("Hinweis nennt die Tokengrenze", h.contains("8192"));
+        pruefe("Hinweis nennt eine Zeilenzahl", h.contains("400 Zeilen"));
+        pruefe("Hinweis nennt den Ausweg", h.contains("edit"));
+        pruefe("kleinere Grenze, kleinere Zahl",
+               Systemprompt.ausgabehinweis(4096).contains("200 Zeilen"));
+        pruefe("Untergrenze greift bei winzigen Budgets",
+               Systemprompt.ausgabehinweis(256).contains("50 Zeilen"));
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");

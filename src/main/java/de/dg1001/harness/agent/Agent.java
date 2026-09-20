@@ -240,7 +240,11 @@ public final class Agent {
             // ------------------------------------------------- Werkzeuge
             List<ToolCall> aufrufe = a.message().toolCalls();
             aufrufeGesamt += aufrufe.size();
-            List<Tool.ToolResult> ergebnisse = fuehreAlleAus(aufrufe);
+            // Endete der Zug an der Ausgabegrenze, ist der letzte Aufruf
+            // mitten im JSON abgeschnitten. Die Grenze wandert mit, damit die
+            // Fehlermeldung die Ursache nennen kann statt nur das Symptom.
+            int grenze = a.finishReason() == FinishReason.LENGTH ? budget.maxAusgabe() : 0;
+            List<Tool.ToolResult> ergebnisse = fuehreAlleAus(aufrufe, grenze);
 
             // In AUFRUFREIHENFOLGE anhaengen, nicht in Fertigstellungsreihenfolge:
             // sonst unterscheidet sich der Kontext zwischen zwei sonst gleichen
@@ -269,15 +273,15 @@ public final class Agent {
     }
 
     /** Werkzeuge nebenlaeufig, Ergebnisse in Aufrufreihenfolge. */
-    private List<Tool.ToolResult> fuehreAlleAus(List<ToolCall> aufrufe) {
+    private List<Tool.ToolResult> fuehreAlleAus(List<ToolCall> aufrufe, int ausgabegrenze) {
         if (aufrufe.size() == 1)
-            return List.of(fuehreEinesAus(aufrufe.get(0)));
+            return List.of(fuehreEinesAus(aufrufe.get(0), ausgabegrenze));
 
         List<Tool.ToolResult> ergebnisse = new ArrayList<>(aufrufe.size());
         try (ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<Tool.ToolResult>> futures = new ArrayList<>(aufrufe.size());
             for (ToolCall tc : aufrufe)
-                futures.add(exec.submit(() -> fuehreEinesAus(tc)));
+                futures.add(exec.submit(() -> fuehreEinesAus(tc, ausgabegrenze)));
             for (Future<Tool.ToolResult> f : futures) {
                 try {
                     ergebnisse.add(f.get());
@@ -299,7 +303,7 @@ public final class Agent {
      * <p>Die Freigabe sitzt hier und nicht in der {@link ToolRegistry}, damit
      * die Werkzeuge nichts von Bildschirmen und Nutzern wissen muessen.
      */
-    private Tool.ToolResult fuehreEinesAus(ToolCall tc) {
+    private Tool.ToolResult fuehreEinesAus(ToolCall tc, int ausgabegrenze) {
         String grund = freigabe.pruefe(tc);
         if (grund != null) return Tool.ToolResult.fehler(grund);
         // bash ist das einzige Werkzeug ohne Eingrenzung -- die Dateiwerkzeuge
@@ -312,7 +316,7 @@ public final class Agent {
                 beobachter.hinweis("ausserhalb des Arbeitsbereichs: " + draussen);
         }
         beobachter.werkzeugStart(tc);
-        return registry.fuehreAus(tc, ws);
+        return registry.fuehreAus(tc, ws, ausgabegrenze);
     }
 
     /** Tokens der Werkzeugbeschreibungen — einmal berechnet, danach konstant. */

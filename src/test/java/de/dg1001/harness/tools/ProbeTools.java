@@ -168,10 +168,41 @@ public final class ProbeTools {
                lauf(r, ws, "grep", "{\"muster\":\"[unfertig\"}"),
                t -> t.contains("nicht lesbar"));
 
+        abgeschnitten(r, ws);
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");
         if (fehlgeschlagen > 0) System.exit(1);
+    }
+
+    /**
+     * Abgeschnittene Argumente sollen als das gemeldet werden, was sie sind.
+     *
+     * <p>Ohne die Grenze lautet die Meldung "kein gueltiges JSON" — wahr, aber
+     * als Diagnose irrefuehrend: ein Modell, das einen Tippfehler vermutet,
+     * wiederholt denselben zu grossen Aufruf.
+     */
+    static void abgeschnitten(ToolRegistry r, Workspace ws) {
+        ToolCall halb = new ToolCall("id", "write",
+                "{\"pfad\":\"x.html\",\"inhalt\":\"<html>unvollstaend");
+
+        pruefe("ohne Grenze: JSON-Meldung wie bisher",
+               r.fuehreAus(halb, ws).text(), t -> t.contains("kein gueltiges JSON"));
+
+        pruefe("mit Grenze: nennt die Ausgabegrenze",
+               r.fuehreAus(halb, ws, 8192).text(), t -> t.contains("8192"));
+        pruefe("mit Grenze: widerspricht dem Tippfehler-Verdacht",
+               r.fuehreAus(halb, ws, 8192).text(), t -> t.contains("kein Tippfehler"));
+        pruefe("mit Grenze: nennt den Ausweg",
+               r.fuehreAus(halb, ws, 8192).text(), t -> t.contains("edit"));
+        pruefe("mit Grenze: keine irrefuehrende JSON-Meldung",
+               r.fuehreAus(halb, ws, 8192).text(), t -> !t.contains("kein gueltiges JSON"));
+        pruefe("abgeschnitten bleibt ein Fehler",
+               String.valueOf(r.fuehreAus(halb, ws, 8192).istFehler()), "true"::equals);
+        pruefe("die Datei wurde nicht angelegt",
+               String.valueOf(java.nio.file.Files.exists(ws.wurzel().resolve("x.html"))),
+               "false"::equals);
     }
 
     private static String lauf(ToolRegistry r, Workspace ws, String werkzeug, String args) {

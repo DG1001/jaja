@@ -66,8 +66,10 @@ public final class Main {
         Workspace ws = new Workspace(cwd);
 
         // Projektregeln aus AGENT.md, sofern vorhanden.
+        // Die Ausgabegrenze gehoert in den Prompt, weil sie das Modell sonst
+        // erst erfaehrt, wenn ein Aufruf daran zerschellt.
         Systemprompt.Ergebnis sp = Systemprompt.baue(
-                SYSTEM_PROMPT, ws,
+                SYSTEM_PROMPT + "\n\n" + Systemprompt.ausgabehinweis(maxAusgabe), ws,
                 o.containsKey("systemprompt") ? Path.of(o.get("systemprompt")) : null,
                 o.containsKey("kein-agent-md"));
         ContextBudget budget = ContextBudget.vorgabe(fenster, maxAusgabe);

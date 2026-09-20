@@ -77,6 +77,26 @@ public final class ToolRegistry {
      * {@code istFehler} da.
      */
     public Tool.ToolResult fuehreAus(ToolCall tc, Workspace ws) {
+        return fuehreAus(tc, ws, 0);
+    }
+
+    /**
+     * Wie {@link #fuehreAus(ToolCall, Workspace)}, kennt aber die Ausgabegrenze
+     * des Zuges, falls dieser an ihr endete.
+     *
+     * <p>Der Unterschied zeigt sich nur im Fehlerfall, und dort entscheidet er
+     * daruber, ob das Modell sich erholen kann. Wird ein Aufruf mitten im
+     * JSON abgeschnitten, ist die Meldung "kein gueltiges JSON" zwar wahr, aber
+     * als Diagnose falsch: sie liest sich wie ein Tippfehler, und ein Modell,
+     * das einen Tippfehler vermutet, schickt denselben zu grossen Aufruf noch
+     * einmal. Gemessen an einem Lauf, der eine komplette index.html in einem
+     * {@code write} unterbringen wollte, an der Grenze abgeschnitten wurde und
+     * danach im Kreis lief, bis der Kontext voll war.
+     *
+     * @param ausgabegrenze die erschoepfte Grenze in Token, oder 0, wenn der
+     *                      Zug nicht an ihr endete
+     */
+    public Tool.ToolResult fuehreAus(ToolCall tc, Workspace ws, int ausgabegrenze) {
         Tool t = werkzeuge.get(tc.name());
         if (t == null)
             return Tool.ToolResult.fehler("unbekanntes Werkzeug: " + tc.name()
@@ -88,6 +108,14 @@ public final class ToolRegistry {
         } catch (RuntimeException e) {
             // Kommt vor: manche Modelle liefern abgeschnittenes oder leicht
             // fehlerhaftes JSON in arguments. Dem Modell sagen, nicht abbrechen.
+            if (ausgabegrenze > 0)
+                return Tool.ToolResult.fehler(
+                        "Deine Argumente wurden an der Ausgabegrenze von " + ausgabegrenze
+                      + " Token abgeschnitten, bevor das JSON zu Ende war. Das ist kein "
+                      + "Tippfehler — derselbe Aufruf noch einmal wird genauso enden. "
+                      + "Schreibe weniger pro Aufruf: erst ein knappes Geruest anlegen, "
+                      + "die weiteren Teile danach einzeln mit edit anhaengen. "
+                      + "Erhalten: " + kurz(tc.argumentsJson()));
             return Tool.ToolResult.fehler("Argumente sind kein gueltiges JSON: "
                     + e.getMessage() + " — erhalten: " + kurz(tc.argumentsJson()));
         }

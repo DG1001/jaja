@@ -40,6 +40,31 @@ public final class Systemprompt {
     private Systemprompt() {}
 
     /**
+     * Ein Satz, der dem Modell sagt, wie viel es pro Zug schreiben kann.
+     *
+     * <p>Bewusst in <em>Zeilen</em> und nicht in Token. Die Grenze ist eine
+     * Tokengrenze, aber ein Modell kann seine eigene Tokenzahl nicht schaetzen —
+     * "hoechstens 8192 Token" ist keine Anweisung, der es folgen kann, "keine
+     * Datei ueber 400 Zeilen" schon.
+     *
+     * <p>Die Umrechnung ist grob und soll es sein: eine Zeile Code liegt je
+     * nach Sprache zwischen 8 und 15 Token, dazu kommen JSON-Maskierung, der
+     * Pfad und ein etwaiger Denkblock. Mit einem Zwanzigstel der Grenze bleibt
+     * genug Luft, dass die Zahl auch dann noch stimmt, wenn das Modell sie nur
+     * ungefaehr einhaelt — und darum geht es: eine Groessenordnung, keine
+     * Schranke. Durchgesetzt wird nichts hier, sondern erst durch die Meldung
+     * beim Abschneiden.
+     */
+    public static String ausgabehinweis(int maxAusgabe) {
+        int zeilen = Math.max(50, (maxAusgabe / 20) / 50 * 50);
+        return "Du kannst pro Zug hoechstens " + maxAusgabe + " Token erzeugen, "
+             + "Werkzeugargumente eingerechnet. Schreibe deshalb keine Datei ueber "
+             + "etwa " + zeilen + " Zeilen in einem Aufruf: lege erst ein knappes "
+             + "Geruest an und fuege die weiteren Teile danach einzeln mit edit hinzu. "
+             + "Wird ein Aufruf an der Grenze abgeschnitten, ist er verloren.";
+    }
+
+    /**
      * @param grundlage    der eingebaute Prompt
      * @param ws           Arbeitsbereich, in dem gesucht wird
      * @param ersatzdatei  ersetzt die Grundlage ganz; null, wenn keine angegeben
