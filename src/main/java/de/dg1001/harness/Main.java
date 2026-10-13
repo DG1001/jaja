@@ -151,6 +151,7 @@ public final class Main {
         de.dg1001.harness.agent.Beobachter b = protokoll != null ? protokoll : beob;
         Agent agent = new Agent(endpunkt, werkzeuge(o, endpunkt, budget, b), ws, budget, maxZuege, b)
                 .mitDenkgrenze(maxDenken)
+                .mitUebergabe(!o.containsKey("keine-uebergabe"))
                 // Im Stapelbetrieb fragt niemand -- aber Verbote gelten trotzdem.
                 .mitFreigabe(de.dg1001.harness.agent.Regeln.aus(ws.projekt()).nurVerbote());
 
@@ -237,6 +238,7 @@ public final class Main {
             }
             return new Agent(endpunkt, werkzeuge(o, endpunkt, budget, b), w, budget, maxZuege, b)
                     .mitDenkgrenze(maxDenken)
+                    .mitUebergabe(!o.containsKey("keine-uebergabe"))
                     .mitFreigabe(de.dg1001.harness.agent.Regeln.aus(ws.projekt()).nurVerbote());
         }, m -> { if (laut) System.err.println("[harness] " + m); });
         long ms = (System.nanoTime() - t0) / 1_000_000;
@@ -372,6 +374,8 @@ public final class Main {
                                         Linux bwrap); fehlt das Werkzeug, Abbruch
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
+              --keine-uebergabe         Stapelbetrieb: bei vollem Kontext enden, statt
+                                        an einen frischen Verlauf zu uebergeben
               --versuche <n>            n Versuche nebeneinander, der mit gruenen Tests
                                         gewinnt; nur Stapelbetrieb (Versuch)
               --erkunden                Werkzeug 'erkunde': ein Unteragent beantwortet

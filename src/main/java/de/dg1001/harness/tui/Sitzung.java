@@ -281,23 +281,7 @@ public final class Sitzung {
     /** Der Auftrag an das Modell. Er beschreibt, was jemand braucht, der den
      *  Verlauf nicht kennt — nicht, was schoen aussieht. */
     static String uebergabeAuftrag(String datei) {
-        return """
-               Der bisherige Verlauf wird gleich verworfen, damit wir mit frischem \
-               Kontext weiterarbeiten koennen. Schreibe jetzt mit dem write-Werkzeug \
-               eine Uebergabe nach %s.
-
-               Sie muss allein genuegen, um die Arbeit fortzusetzen, ohne diesen \
-               Verlauf zu kennen:
-
-               - Ziel der Aufgabe in eigenen Worten
-               - was fertig ist, mit Dateinamen
-               - was noch offen ist, als Liste
-               - Entscheidungen und Annahmen, die man sonst neu treffen muesste
-               - was zuletzt schiefging und was noch ungeprueft ist
-
-               Kurz fassen, aber nichts weglassen, was man sich sonst neu \
-               erarbeiten muesste. Schreibe die Datei und tue danach nichts weiter."""
-               .formatted(datei);
+        return Agent.uebergabeAuftrag(datei);
     }
 
     /** Einzelne Taste, gelesen wie eine Freigabe. */

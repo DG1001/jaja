@@ -121,6 +121,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
 | `--erkunden` | off | add `erkunde`: a read-only sub-agent answers questions in its own context (experiment) |
 | `--versuche <n>` | 1 | batch: n attempts side by side, the one with green tests wins (experiment) |
+| `--keine-uebergabe` | off | batch: end at a full context instead of handing over to a fresh one |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
 
@@ -341,6 +342,19 @@ Two rules it follows:
 
 `/zusammenfassen` triggers it at any time, and takes a filename — `AGENT.md`,
 `PROJEKT.md`, whatever the project already uses.
+
+**Batch mode hands over on its own**, because there nobody can be asked and
+the alternative was a certain failure (`KONTEXT_ERSCHOEPFT`). Timing is the
+whole trick: once the context is truly exhausted, the turn that is supposed to
+write the handover does not fit either. So it happens as soon as trimming no
+longer gets below the threshold, while there is still room — the model writes
+`.harness/uebergabe.md` (under `.harness`, so the deliverable stays clean),
+and a fresh transcript starts with **the original task word for word**, since
+that is the specification and no summary may take its place, plus a pointer to
+the handover. If even that no longer fits, the handover is mechanical: the
+files changed so far and an instruction to look at the directory. At most
+three times per run; turns and tokens are counted across all segments, and the
+trace gets one `ende` line. `--keine-uebergabe` restores the old behaviour.
 
 **`bash` asks before it runs.** It executes whatever the model writes, with your
 permissions; in a benchmark that is fine because the directory is disposable, at
@@ -1242,6 +1256,7 @@ headline numbers above predate them.
 | streaming | wall clock, and the same results with `--kein-stream` |
 | `--max-denken` | where a cut-off saves more than it loses — default off until then |
 | `--erkunden` | input tokens per run, including the sub-agent's own |
+| automatic handover in batch mode | runs that used to end `KONTEXT_ERSCHOEPFT`; `--keine-uebergabe` as the control |
 | `--versuche 3` | pass rate and wall clock against tokens of all attempts; server batching (`--parallel` in llama.cpp) |
 
 ## A note on the German

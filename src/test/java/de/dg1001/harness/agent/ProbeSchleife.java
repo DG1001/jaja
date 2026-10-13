@@ -458,6 +458,61 @@ public final class ProbeSchleife {
                    && !Files.exists(ziel.resolve("weg.txt")) && Files.exists(ziel.resolve(".git/HEAD")));
         }
 
+        // ---------------------------------------- Uebergabe im Stapel
+        {
+            // Unkuerzbarer Ballast: Assistententext wird nie gekuerzt.
+            String ballast = "x".repeat(45_000);                       // ~12.900 Token
+            ContextBudget eng = new ContextBudget(20_000, 4_000, 500, 0.70);  // Schwelle 10.850
+            Skript s = new Skript(
+                    new ChatResponse(new AssistantMessage(ballast, null, List.of(new ToolCall("b1", "read",
+                            "{\"pfad\":\"a.txt\"}"))), FinishReason.TOOL_CALLS, Usage.LEER),
+                    ruft("write", "{\"pfad\":\".harness/uebergabe.md\",\"inhalt\":\"Stand: fast fertig\\n\"}"),
+                    text("Uebergabe geschrieben", FinishReason.STOP),
+                    ruft("read", "{\"pfad\":\".harness/uebergabe.md\"}"),
+                    text("fertig", FinishReason.STOP));
+            int[] enden = {0};
+            Beobachter zaehler = new Beobachter() {
+                @Override public void laufEnde(Agent.Ergebnis e, long ein, long aus, long ms) { enden[0]++; }
+            };
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp), eng, 20, zaehler).mitUebergabe(true);
+            Agent.Ergebnis e = a.lauf("sys", "Tu etwas Grosses, woertlich so.");
+            String neu = s.gesehen.get(3).get(1).toString();
+            pruefe("Uebergabe: Lauf geht weiter statt KONTEXT_ERSCHOEPFT",
+                   e.status() == Agent.Status.FERTIG && "fertig".equals(e.abschluss()));
+            pruefe("Uebergabe: frischer Verlauf mit der Aufgabe woertlich und dem Verweis",
+                   neu.contains("Tu etwas Grosses, woertlich so.")
+                   && neu.contains("Der Stand der Arbeit steht in .harness/uebergabe.md")
+                   && !s.gesehen.get(3).toString().contains("xxxxxxxxxx"));
+            pruefe("Uebergabe: Zuege ueber alle Abschnitte, eine Schlusszeile",
+                   e.zuege() == 5 && enden[0] == 1);
+        }
+        {
+            // Passt gar nicht mehr: mechanisch, ohne Modellaufruf.
+            String ballast = "x".repeat(60_000);                       // ~17.100 Token > nutzbar
+            ContextBudget eng = new ContextBudget(20_000, 4_000, 500, 0.70);
+            Skript s = new Skript(
+                    new ChatResponse(new AssistantMessage(ballast, null, List.of(new ToolCall("b1", "write",
+                            "{\"pfad\":\"teil.py\",\"inhalt\":\"x = 1\\n\"}"))), FinishReason.TOOL_CALLS, Usage.LEER),
+                    ruft("read", "{\"pfad\":\"teil.py\"}"),
+                    text("fertig", FinishReason.STOP));
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp), eng, 20, false).mitUebergabe(true);
+            Agent.Ergebnis e = a.lauf("sys", "Grosse Aufgabe.");
+            pruefe("Uebergabe mechanisch: nennt, was geaendert wurde",
+                   e.status() == Agent.Status.FERTIG
+                   && s.gesehen.get(1).get(1).toString().contains("geaendert: teil.py")
+                   && s.gesehen.get(1).get(1).toString().contains("Grosse Aufgabe."));
+        }
+        {
+            String ballast = "x".repeat(60_000);
+            ContextBudget eng = new ContextBudget(20_000, 4_000, 500, 0.70);
+            Skript s = new Skript(new ChatResponse(new AssistantMessage(ballast, null, List.of(new ToolCall("b1", "read",
+                    "{\"pfad\":\"a.txt\"}"))), FinishReason.TOOL_CALLS, Usage.LEER));
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp), eng, 20, false);
+            Agent.Ergebnis e = a.lauf("sys", "Grosse Aufgabe.");
+            pruefe("ohne Uebergabe: KONTEXT_ERSCHOEPFT, ohne einen Zug, den es nie gab",
+                   e.status() == Agent.Status.KONTEXT_ERSCHOEPFT && e.zuege() == 1);
+        }
+
         // ----------------------------------------------------- Abbruch
         // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
         // lokal dauert ein Zug Minuten.

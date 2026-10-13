@@ -13,6 +13,8 @@ import de.dg1001.harness.wire.Messages.ToolSpec;
 import de.dg1001.harness.wire.Messages.UserMessage;
 import de.dg1001.harness.ws.Workspace;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -38,6 +40,15 @@ public final class Agent {
     private final AtomicBoolean abbruch = new AtomicBoolean(false);
 
     private Freigabe freigabe = Freigabe.ALLES;
+
+    /** Ob ein voller Verlauf an einen frischen uebergeben wird, statt zu enden. */
+    private boolean uebergabe = false;
+
+    /** Hoechstens so oft je Lauf -- wer dreimal den Kontext fuellt, kreist vermutlich. */
+    static final int MAX_UEBERGABEN = 3;
+
+    /** Wohin die Uebergabe geschrieben wird: unter .harness, nicht ins Ergebnis. */
+    static final String UEBERGABE_DATEI = ".harness/uebergabe.md";
 
     /** Ab so vielen Denktoken ohne Werkzeugaufruf wird der Zug gekappt; 0 = nie. */
     private int maxDenken = 0;
@@ -91,6 +102,24 @@ public final class Agent {
      * mehr gute als schlechte Zuege zu treffen, ist eine Messfrage, keine
      * Geschmacksfrage. Wirkt nur, wenn der Server streamt.
      */
+    /**
+     * Uebergabe statt Ende, wenn der Kontext voll laeuft -- fuer den
+     * Stapelbetrieb, in dem niemand gefragt werden kann.
+     *
+     * <p>In der Sitzung fragt die Oberflaeche nach und laesst das Modell eine
+     * {@code NOTIZEN.md} schreiben. Im Stapelbetrieb endete der Lauf bisher mit
+     * KONTEXT_ERSCHOEPFT -- ein sicherer Fehlschlag. Jetzt wird uebergeben, und
+     * zwar <em>bevor</em> nichts mehr geht: sobald die Kuerzung nicht mehr unter
+     * die Schwelle kommt. Ist der Kontext wirklich erschoepft, passt auch der
+     * Zug nicht mehr hinein, der die Uebergabe schreiben soll.
+     *
+     * <p>Der frische Verlauf beginnt mit der urspruenglichen Aufgabe,
+     * woertlich: sie ist die Spezifikation, und keine Zusammenfassung darf an
+     * ihre Stelle treten. Dazu die Uebergabe des Modells -- oder, wenn die
+     * nicht zustande kam, eine mechanische: welche Dateien geaendert wurden.
+     */
+    public Agent mitUebergabe(boolean an) { this.uebergabe = an; return this; }
+
     public Agent mitDenkgrenze(int token) { this.maxDenken = Math.max(0, token); return this; }
 
     /**
@@ -112,7 +141,9 @@ public final class Agent {
 
     public void abbruchZuruecksetzen() { abbruch.set(false); }
 
-    public enum Status { FERTIG, ZUGLIMIT, STECKEN, KONTEXT_ERSCHOEPFT, FEHLER, ABGEBROCHEN }
+    public enum Status { FERTIG, ZUGLIMIT, STECKEN, KONTEXT_ERSCHOEPFT, FEHLER, ABGEBROCHEN,
+                         /** Nur intern: der Verlauf muss uebergeben werden, siehe {@link #mitUebergabe}. */
+                         UEBERGABE }
 
     public record Ergebnis(Status status, int zuege, int werkzeugaufrufe,
                            String abschluss, String hinweis) {
@@ -223,7 +254,7 @@ public final class Agent {
         // der Systemprompt bleibt byte-gleich, der Praefix-Cache ueber
         // Systemprompt und Werkzeugbeschreibungen bleibt heil.
         t.beginne(systemPrompt, Umgebungsbild.anhaengen(aufgabe, ws));
-        return lauf(t);
+        return mitLaeufer(() -> mitUebergaben(t, systemPrompt, aufgabe));
     }
 
     /**
@@ -235,11 +266,17 @@ public final class Agent {
      * ruft das hier.
      */
     public Ergebnis lauf(Transcript t) {
+        return mitLaeufer(() -> schleife(t, maxZuege, false));
+    }
+
+    /** Eine Schlusszeile je Lauf, auch wenn er aus mehreren Abschnitten besteht. */
+    private Ergebnis mitLaeufer(java.util.function.Supplier<Ergebnis> lauf) {
         laeufer = Thread.currentThread();
+        geaendertImLauf.clear();
         long ein0 = eingabeTokens, aus0 = ausgabeTokens, t0 = System.nanoTime();
         long wEin0 = registry.eingabeTokens(), wAus0 = registry.ausgabeTokens();
         try {
-            Ergebnis e = schleife(t);
+            Ergebnis e = lauf.get();
             // Was Unteragenten verbraucht haben, gehoert zu diesem Lauf --
             // sonst saehe eine Konfiguration mit ihnen billiger aus, als sie ist.
             eingabeTokens += registry.eingabeTokens() - wEin0;
@@ -254,7 +291,87 @@ public final class Agent {
         }
     }
 
-    private Ergebnis schleife(Transcript t) {
+    /** Was in diesem Lauf per write/edit geaendert wurde -- fuer die mechanische Uebergabe. */
+    private final java.util.Set<String> geaendertImLauf =
+            java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
+
+    private static final String UEBERGABE_AUFTRAG = """
+            Der bisherige Verlauf wird gleich verworfen, damit wir mit frischem \
+            Kontext weiterarbeiten koennen. Schreibe jetzt mit dem write-Werkzeug \
+            eine Uebergabe nach %s.
+
+            Sie muss allein genuegen, um die Arbeit fortzusetzen, ohne diesen \
+            Verlauf zu kennen:
+
+            - Ziel der Aufgabe in eigenen Worten
+            - was fertig ist, mit Dateinamen
+            - was noch offen ist, als Liste
+            - Entscheidungen und Annahmen, die man sonst neu treffen muesste
+            - was zuletzt schiefging und was noch ungeprueft ist
+
+            Kurz fassen, aber nichts weglassen, was man sich sonst neu \
+            erarbeiten muesste. Schreibe die Datei und tue danach nichts weiter.""";
+
+    /** Der Auftrag, eine Uebergabe zu schreiben -- dieselbe Fassung fuer Sitzung und Stapel. */
+    public static String uebergabeAuftrag(String datei) { return UEBERGABE_AUFTRAG.formatted(datei); }
+
+    private static final String FORTSETZUNG = """
+            Wir setzen eine laufende Arbeit fort. Der bisherige Verlauf wurde verworfen, \
+            weil das Kontextfenster voll war; die Dateien im Verzeichnis sind der Stand.
+
+            Die urspruengliche Aufgabe, woertlich:
+
+            %s
+
+            %s""";
+
+    private Ergebnis mitUebergaben(Transcript t, String systemPrompt, String aufgabe) {
+        int zuege = 0, aufrufe = 0;
+        for (int n = 0; ; n++) {
+            Ergebnis e = schleife(t, maxZuege - zuege, uebergabe && n < MAX_UEBERGABEN);
+            zuege += e.zuege();
+            aufrufe += e.werkzeugaufrufe();
+            if (e.status() != Status.UEBERGABE)
+                return new Ergebnis(e.status(), zuege, aufrufe, e.abschluss(), e.hinweis());
+
+            beobachter.ereignis("uebergabe");
+            Path datei = ws.wurzel().resolve(UEBERGABE_DATEI);
+            try { Files.deleteIfExists(datei); } catch (java.io.IOException ignoriert) { }
+            // Solange es noch passt: das Modell schreibt, es weiss, was zaehlte.
+            if (!"mechanisch".equals(e.hinweis()) && zuege < maxZuege) {
+                beobachter.hinweis("Kontext voll, das Modell schreibt eine Uebergabe nach " + UEBERGABE_DATEI);
+                t.add(new UserMessage(uebergabeAuftrag(UEBERGABE_DATEI)));
+                Ergebnis u = schleife(t, Math.min(4, maxZuege - zuege), false);
+                zuege += u.zuege();
+                aufrufe += u.werkzeugaufrufe();
+                if (u.status() == Status.ABGEBROCHEN || u.status() == Status.FEHLER)
+                    return new Ergebnis(u.status(), zuege, aufrufe, null, u.hinweis());
+            }
+            String stand;
+            if (Files.isRegularFile(datei)) {
+                stand = "Der Stand der Arbeit steht in " + UEBERGABE_DATEI
+                      + ". Lies die Datei zuerst und arbeite dann dort weiter.";
+            } else {
+                beobachter.hinweis("keine Uebergabe vom Modell, mechanisch weiter");
+                stand = "Eine Uebergabe kam nicht zustande. In diesem Lauf mit write/edit geaendert: "
+                      + (geaendertImLauf.isEmpty() ? "nichts" : String.join(", ", geaendertImLauf))
+                      + ". Verschaffe dir zuerst einen Ueberblick ueber den Stand im Verzeichnis "
+                      + "(bei git: git status und git diff), dann arbeite weiter.";
+            }
+            if (zuege >= maxZuege)
+                return new Ergebnis(Status.ZUGLIMIT, zuege, aufrufe, null, "Zuglimit " + maxZuege + " erreicht.");
+            beobachter.hinweis(String.format("Uebergabe %d/%d -- frischer Verlauf", n + 1, MAX_UEBERGABEN));
+            t = new Transcript(schaetzer);
+            t.beginne(systemPrompt, Umgebungsbild.anhaengen(FORTSETZUNG.formatted(aufgabe, stand), ws));
+        }
+    }
+
+    /**
+     * @param zugGrenze     hoechstens so viele Zuege in diesem Abschnitt
+     * @param uebergabeErlaubt ob ein voller Verlauf als {@link Status#UEBERGABE}
+     *                      endet statt als KONTEXT_ERSCHOEPFT
+     */
+    private Ergebnis schleife(Transcript t, int zugGrenze, boolean uebergabeErlaubt) {
         List<ToolSpec> werkzeuge = registry.specs();
         t.setzeGrundlast(grundlast(werkzeuge));
 
@@ -268,16 +385,25 @@ public final class Agent {
         java.util.LinkedHashSet<String> ungeprueft = new java.util.LinkedHashSet<>();
         java.util.Map<String, Integer> gleiche = new java.util.HashMap<>();
 
-        for (int zug = 1; zug <= maxZuege; zug++) {
+        for (int zug = 1; zug <= zugGrenze; zug++) {
 
             if (abbruch.get())
                 return new Ergebnis(Status.ABGEBROCHEN, zug - 1, aufrufeGesamt, null,
                                     "vom Nutzer abgebrochen");
 
             Elision.Bericht kuerzung = elision.vielleichtKuerzen(t);
+            // zug - 1: dieser Zug hat nicht stattgefunden. Bei mehreren
+            // Abschnitten summierte sich das sonst zu Zuegen, die es nie gab.
             if (kuerzung.ergebnis() == Elision.Ergebnis.AUSSICHTSLOS)
-                return new Ergebnis(Status.KONTEXT_ERSCHOEPFT, zug, aufrufeGesamt,
-                                    null, kuerzung.hinweis());
+                return uebergabeErlaubt
+                        ? new Ergebnis(Status.UEBERGABE, zug - 1, aufrufeGesamt, null, "mechanisch")
+                        : new Ergebnis(Status.KONTEXT_ERSCHOEPFT, zug - 1, aufrufeGesamt,
+                                       null, kuerzung.hinweis());
+            // Ueber der Schwelle geblieben, obwohl gekuerzt wurde: jetzt passt
+            // eine Uebergabe noch, spaeter vielleicht nicht mehr.
+            if (uebergabeErlaubt && kuerzung.stufen() > 0
+                    && budget.mussKuerzen(kuerzung.nachher()))
+                return new Ergebnis(Status.UEBERGABE, zug - 1, aufrufeGesamt, null, null);
             if (kuerzung.ergebnis() == Elision.Ergebnis.GEKUERZT) beobachter.ereignis("kuerzung");
             if (kuerzung.ergebnis() == Elision.Ergebnis.GEKUERZT)
                 beobachter.hinweis(String.format("gekuerzt: %d -> %d Token (%d Stufen)",
@@ -408,7 +534,7 @@ public final class Agent {
             }
         }
 
-        return new Ergebnis(Status.ZUGLIMIT, maxZuege, aufrufeGesamt, null,
+        return new Ergebnis(Status.ZUGLIMIT, zugGrenze, aufrufeGesamt, null,
                 "Zuglimit " + maxZuege + " erreicht.");
     }
 
@@ -457,13 +583,14 @@ public final class Agent {
     }
 
     /** Fuehrt die Liste der ungeprueften Aenderungen nach einem Aufruf nach. */
-    private static void merkeAenderung(ToolCall tc, Tool.ToolResult r,
+    private void merkeAenderung(ToolCall tc, Tool.ToolResult r,
                                        java.util.Set<String> ungeprueft) {
         // Jedes bash zaehlt, auch ein abgelehntes: wer es versucht hat und
         // abgewiesen wurde, soll nicht gleich noch einmal dazu gedraengt werden.
         if ("bash".equals(tc.name())) { ungeprueft.clear(); return; }
         if (r.istFehler() || !("write".equals(tc.name()) || "edit".equals(tc.name()))) return;
         String pfad = tc.kurz();
+        geaendertImLauf.add(pfad);
         int punkt = pfad.lastIndexOf('.');
         if (punkt >= 0 && DOKU.contains(pfad.substring(punkt).toLowerCase())) return;
         ungeprueft.add(pfad);
