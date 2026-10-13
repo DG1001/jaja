@@ -143,7 +143,9 @@ public final class Main {
                 : null;
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
                                 ws, budget, maxZuege, protokoll != null ? protokoll : beob)
-                .mitDenkgrenze(maxDenken);
+                .mitDenkgrenze(maxDenken)
+                // Im Stapelbetrieb fragt niemand -- aber Verbote gelten trotzdem.
+                .mitFreigabe(de.dg1001.harness.agent.Regeln.aus(ws.projekt()).nurVerbote());
 
         long t0 = System.nanoTime();
         Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);

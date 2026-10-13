@@ -55,6 +55,7 @@ public final class Sitzung {
     private final de.dg1001.harness.wire.ChatEndpunkt endpunkt;
     private Transcript verlauf;
     private boolean fragen;              // vor bash nachfragen?
+    private final de.dg1001.harness.agent.Regeln regeln;
 
     /** Standardname der Uebergabe. Bewusst im Projekt und nicht in .harness:
      *  die Datei ist fuer Menschen mitgedacht, nicht nur fuer den naechsten Lauf. */
@@ -65,6 +66,8 @@ public final class Sitzung {
 
     /** Offene Freigabefrage; nur der Hauptfaden beantwortet sie. */
     private volatile ToolCall offeneFrage;
+    /** Was [v] bei der offenen Frage erlauben wuerde, oder null. */
+    private volatile String offeneVorschlag;
     private final SynchronousQueue<Antwort> antwort = new SynchronousQueue<>();
 
     /**
@@ -93,6 +96,7 @@ public final class Sitzung {
         this.systemPrompt = systemPrompt;
         this.modell       = modell;
         this.fragen       = fragen;
+        this.regeln       = de.dg1001.harness.agent.Regeln.aus(ws.projekt());
         this.verlauf      = new Transcript(schaetzer);
         anzeige.setzeFrei(!fragen);
 
@@ -333,6 +337,9 @@ public final class Sitzung {
 
             if (offeneFrage != null) {
                 Antwort a = freigabeAntwort(c);
+                // [v] ohne angebotenes Muster ist keine Antwort -- sonst
+                // lehnte die Taste ab, was sie haette erlauben sollen.
+                if (a == Antwort.MUSTER && offeneVorschlag == null) continue;
                 if (a != Antwort.KEINE) gib(a);
                 continue;
             }
@@ -370,7 +377,7 @@ public final class Sitzung {
     }
 
     /** Antwort auf eine Freigabefrage. */
-    public enum Antwort { JA, NEIN, IMMER, KEINE }
+    public enum Antwort { JA, NEIN, IMMER, MUSTER, KEINE }
 
     /**
      * Deutet einen Tastendruck als Antwort auf eine Freigabefrage.
@@ -393,6 +400,10 @@ public final class Sitzung {
         if (c == 'j' || c == 'J' || c == 'y' || c == 'Y') return Antwort.JA;
         if (c == 'n' || c == 'N' || c == 3)               return Antwort.NEIN;
         if (c == 'f' || c == 'F')                         return Antwort.IMMER;
+        // v wie "vertrauen" -- bewusst nicht e: das ist der haeufigste
+        // Buchstabe, und wer waehrend einer Frage seinen naechsten Auftrag
+        // tippt, wuerde damit ein Muster fuer die ganze Sitzung freigeben.
+        if (c == 'v' || c == 'V')                         return Antwort.MUSTER;
         return Antwort.KEINE;
     }
 
@@ -404,17 +415,28 @@ public final class Sitzung {
 
     private Freigabe freigabe() {
         return tc -> {
-            if (!fragen || !tc.name().equals("bash")) return null;
+            if (!tc.name().equals("bash")) return null;
+            String kommando = kommando(tc);
+            // Verbote vor allem anderen, auch wenn gerade nicht gefragt wird.
+            String verboten = regeln.verbotenDurch(kommando);
+            if (verboten != null) {
+                anzeige.zeile("  " + Terminal.ROT + "bash verboten (" + verboten + "): "
+                              + Terminal.NORMAL + kommando);
+                return de.dg1001.harness.agent.Regeln.verbotsmeldung(verboten);
+            }
+            if (!fragen || regeln.erlaubt(kommando)) return null;
 
             // Werkzeuge laufen nebenlaeufig: immer nur eine Frage auf einmal,
             // sonst beantwortet ein Tastendruck die falsche.
             synchronized (this) {
-                String kommando = kommando(tc);
+                String vorschlag = de.dg1001.harness.agent.Regeln.vorschlag(kommando);
                 anzeige.zeile("");
                 anzeige.zeile("  " + Terminal.GELB + "bash?" + Terminal.NORMAL + "  " + kommando);
                 anzeige.zeile("  " + Terminal.GRAU
                         + "  [j] ausfuehren   [n] ablehnen   "
-                        + "[f] ausfuehren und ab jetzt nicht mehr fragen" + Terminal.NORMAL);
+                        + (vorschlag != null ? "[v] " + vorschlag + " ungefragt   " : "")
+                        + "[f] ab jetzt nichts mehr fragen" + Terminal.NORMAL);
+                offeneVorschlag = vorschlag;
 
                 offeneFrage = tc;
                 Antwort a;
@@ -422,6 +444,13 @@ public final class Sitzung {
                 catch (InterruptedException e) { Thread.currentThread().interrupt(); a = Antwort.NEIN; }
                 finally { offeneFrage = null; }
 
+                if (a == Antwort.MUSTER && offeneVorschlag != null) {
+                    regeln.erlaube(offeneVorschlag);
+                    anzeige.zeile("  " + Terminal.GRUEN + "  ausgefuehrt" + Terminal.NORMAL
+                            + Terminal.GRAU + " — " + offeneVorschlag + " laeuft in dieser Sitzung "
+                            + "ungefragt; dauerhaft: in .jaja.json unter \"erlauben\"" + Terminal.NORMAL);
+                    return null;
+                }
                 if (a == Antwort.IMMER) {
                     fragen = false;
                     anzeige.setzeFrei(true);
@@ -527,7 +556,7 @@ public final class Sitzung {
             "Ctrl-C               Zug abbrechen, Sitzung und Verlauf bleiben",
             "Ctrl-F               zwischen frei und fragen wechseln",
             "",
-            "bei einer bash-Frage:  [j] ausfuehren  [n] ablehnen  [f] nicht mehr fragen",
+            "bei einer bash-Frage:  [j] ausfuehren  [n] ablehnen  [v] Muster ungefragt  [f] nicht mehr fragen",
         };
         for (String z : zeilen)
             anzeige.zeile(z.isEmpty() ? "" : "  " + Terminal.GRAU + z + Terminal.NORMAL);

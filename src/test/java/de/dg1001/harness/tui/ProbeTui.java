@@ -104,6 +104,8 @@ public final class ProbeTui {
                Sitzung.freigabeAntwort('/'), Sitzung.Antwort.KEINE);
         pruefe("Buchstabe eines Auftrags ist keine Antwort",
                Sitzung.freigabeAntwort('e'), Sitzung.Antwort.KEINE);
+        pruefe("v gibt das vorgeschlagene Muster frei",
+               Sitzung.freigabeAntwort('v'), Sitzung.Antwort.MUSTER);
         pruefe("Leertaste ist keine Antwort",
                Sitzung.freigabeAntwort(' '), Sitzung.Antwort.KEINE);
         // Ctrl-F schaltet waehrend eines Laufs um und darf deshalb keine

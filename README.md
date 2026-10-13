@@ -345,7 +345,9 @@ permissions; in a benchmark that is fine because the directory is disposable, at
 a terminal it is not. A refusal is not an error — the model gets a tool result
 explaining it and can pick another route. `--frei` or `/frei` turns it off.
 
-`j` runs it, `n` refuses, and **`f` runs it and stops asking from then on**.
+`j` runs it, `n` refuses, `v` allows the suggested pattern (see
+[approval rules](#approval-rules-erlauben-and-verbieten)), and **`f` runs it
+and stops asking from then on**.
 Every other key is ignored and the prompt stays. That is not fussiness — the first version treated anything but `j` as a
 refusal, so typing your next prompt while a turn ran silently refused whatever
 came up. It showed up in a live session as a `/` — the first character of
@@ -747,7 +749,8 @@ does not belong in prose read with regular expressions, so it lives in
 ```json
 {"test": "python3 -m pytest -q",
  "pruefen": {"*.py": "ruff check {datei}"},
- "erlauben": ["pytest*", "git status", "git diff*"]}
+ "erlauben": ["pytest*", "git status*", "git diff*", "ls*"],
+ "verbieten": ["git push*", "rm -rf /*"]}
 ```
 
 All of it is optional, and a broken file stops jaja with a message instead of
@@ -759,6 +762,32 @@ a turn; none costs nothing. The command appears in the environment snapshot
 (`Tests: …`) and, word for word, in the verification nudge; on an empty
 directory it is detected again at nudge time, because there the tests only
 come into existence during the run.
+
+### Approval rules: `erlauben` and `verbieten`
+
+Before, there were two states: every `ls` asks, or `/frei` turns asking off —
+and then it is off for `rm -rf` too. The first is annoying enough to drive
+people to the second.
+
+`erlauben` lists patterns (`*` is the only wildcard) that run without asking
+in the session. **A pattern covers a command, not a line**: `pytest*` must not
+wave through `pytest && rm -rf ~`. So the line is split at `&&`, `||`, `;`,
+`|`, `&` and newlines outside quotes, and every part has to be allowed on its
+own; `2>&1` is not a separator. Anything with `$(…)`, backticks or `<(…)` is
+never allowed automatically.
+
+`verbieten` is refused in every mode — asking, `/frei`, and batch, where
+nobody is asked at all. It catches `cd x && git push`, but not
+`bash -c 'git push'` or a script that pushes: a guard rail against accidents,
+not against intent. That is what `--sandkasten` is for.
+
+At a `bash?` prompt, **`v`** ("vertrauen") allows the suggested pattern for
+the rest of the session — `git status -s` suggests `git status*`,
+`python3 -m pytest -q x` suggests `python3 -m pytest*`; a chained line
+suggests nothing. Not `e`, although that was the first idea: it is the most
+common letter in German, and typing the next prompt while a question is open
+would have allowed a pattern for the whole session. The probe that pins
+"`e` is not an answer" was older than the idea, and it was right.
 
 ## Project rules: `AGENT.md`
 

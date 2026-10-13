@@ -24,18 +24,19 @@ import java.util.stream.Stream;
  * <pre>
  * {"test": "python3 -m pytest -q",
  *  "pruefen": {"*.py": "ruff check {datei}"},
- *  "erlauben": ["pytest*", "git status", "git diff*"]}
+ *  "erlauben": ["pytest*", "git status", "git diff*"],
+ *  "verbieten": ["git push*", "rm -rf /*"]}
  * </pre>
  *
  * <p>Alles ist freiwillig. Fehlt {@code test}, wird er aus dem erkannt, was im
  * Verzeichnis liegt ({@link #erkenneTest}) -- ohne einen Prozess zu starten.
  */
 public record Projekt(String test, boolean testErkannt, Map<String, String> pruefen,
-                      List<String> erlauben) {
+                      List<String> erlauben, List<String> verbieten) {
 
     public static final String DATEI = ".jaja.json";
 
-    public static final Projekt LEER = new Projekt(null, false, Map.of(), List.of());
+    public static final Projekt LEER = new Projekt(null, false, Map.of(), List.of(), List.of());
 
     /** Liest {@code .jaja.json}; ein Fehler darin wird gemeldet, nicht verschluckt. */
     public static Projekt lies(Path wurzel) throws IOException {
@@ -43,6 +44,7 @@ public record Projekt(String test, boolean testErkannt, Map<String, String> prue
         String test = null;
         Map<String, String> pruefen = new LinkedHashMap<>();
         List<String> erlauben = new ArrayList<>();
+        List<String> verbieten = new ArrayList<>();
         if (Files.isRegularFile(p)) {
             Object w;
             try {
@@ -55,10 +57,13 @@ public record Projekt(String test, boolean testErkannt, Map<String, String> prue
                 if (e.getValue() instanceof String s) pruefen.put(e.getKey(), s);
             for (Object o : Json.arr(Json.feld(w, "erlauben")))
                 if (o instanceof String s && !s.isBlank()) erlauben.add(s.strip());
+            for (Object o : Json.arr(Json.feld(w, "verbieten")))
+                if (o instanceof String s && !s.isBlank()) verbieten.add(s.strip());
         }
         boolean erkannt = false;
         if (test == null || test.isBlank()) { test = erkenneTest(wurzel); erkannt = test != null; }
-        return new Projekt(test, erkannt, Map.copyOf(pruefen), List.copyOf(erlauben));
+        return new Projekt(test, erkannt, Map.copyOf(pruefen), List.copyOf(erlauben),
+                           List.copyOf(verbieten));
     }
 
     /**

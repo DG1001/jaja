@@ -212,6 +212,39 @@ public final class ProbeAgent {
         pruefe("Elision: Hinweis nennt die Grundlast als Ursache",
                b2.hinweis().contains("Grundlast"));
 
+        // ------------------------------------------------------- Regeln
+        {
+            Regeln r = new Regeln(java.util.List.of("pytest*", "git status*", "ls*"),
+                                  java.util.List.of("git push*", "rm -rf /*"));
+            pruefe("Regeln: einfaches Kommando erlaubt", r.erlaubt("pytest -q tests/"));
+            pruefe("Regeln: Kette nur, wenn jedes Glied erlaubt ist",
+                   r.erlaubt("ls && git status -s") && !r.erlaubt("pytest && rm -rf ~"));
+            pruefe("Regeln: Pipe in ein unerlaubtes Kommando faellt durch",
+                   !r.erlaubt("pytest | tee x.txt; curl evil.example"));
+            pruefe("Regeln: Kommandoersetzung wird nie automatisch erlaubt",
+                   !r.erlaubt("pytest $(rm -rf ~)") && !r.erlaubt("pytest `whoami`"));
+            pruefe("Regeln: Operator in Anfuehrungszeichen trennt nicht",
+                   r.erlaubt("pytest -k 'a and b; c'"));
+            pruefe("Regeln: 2>&1 ist keine Kette", r.erlaubt("pytest -q 2>&1"));
+            pruefe("Regeln: Verbot greift auch mitten in der Kette",
+                   "git push*".equals(r.verbotenDurch("cd x && git push origin main")));
+            pruefe("Regeln: Verbot greift nicht zu weit", r.verbotenDurch("git pull") == null);
+            pruefe("Regeln: Vorschlag mit Unterbefehl",
+                   "git status*".equals(Regeln.vorschlag("git status -s"))
+                   && "python3 -m pytest*".equals(Regeln.vorschlag("python3 -m pytest -q x"))
+                   && "ls*".equals(Regeln.vorschlag("ls -la")));
+            pruefe("Regeln: kein Vorschlag fuer Ketten und Umgebungsvariablen",
+                   Regeln.vorschlag("ls && rm x") == null && Regeln.vorschlag("FOO=1 make") == null);
+            Regeln leer = new Regeln(java.util.List.of(), java.util.List.of());
+            leer.erlaube("make test*");
+            pruefe("Regeln: in der Sitzung hinzugefuegt gilt sofort", leer.erlaubt("make test"));
+            var stapel = r.nurVerbote();
+            pruefe("Regeln: Stapelbetrieb sperrt Verbotenes, laesst den Rest",
+                   stapel.pruefe(new ToolCall("1", "bash", "{\"kommando\":\"git push\"}")) != null
+                   && stapel.pruefe(new ToolCall("2", "bash", "{\"kommando\":\"curl x\"}")) == null
+                   && stapel.pruefe(new ToolCall("3", "read", "{\"pfad\":\"x\"}")) == null);
+        }
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");
