@@ -128,17 +128,6 @@ public final class Agent {
             noch einmal.""";
 
     /**
-     * Nachgefragt, bevor ein Abschluss ohne Werkzeugaufruf als fertig gilt.
-     *
-     * <p>Der haeufigste Fehler im Pruefstand war nicht Unvermoegen, sondern ein
-     * Modell, das etwas Funktionierendes gebaut hat statt des Verlangten, und
-     * dessen eigene Tests dazu gruen waren. Dreimal ist dieselbe Aufgabe an
-     * derselben Stelle gescheitert -- an einem Importpfad, den die Aufgabe
-     * woertlich nennt. Und der einzige ueber zwei Laeufe stabile Fehler stand
-     * im Fliesstext der Aufgabe, nicht in der Signaturliste darunter.
-     */
-
-    /**
      * Angehaengt, wenn ein Lauf ohne einen einzigen Werkzeugaufruf enden will.
      *
      * <p>{@link #ANSTOSS} deckt nur den Fall ab, dass die Ausgabegrenze erreicht
@@ -154,6 +143,34 @@ public final class Agent {
             Arbeit am Verzeichnis verlangt, fang jetzt damit an: sieh dir zuerst \
             an, was da ist. Falls sie wirklich ohne Werkzeug zu beantworten war, \
             sag das ausdruecklich und begruende es.""";
+
+    /**
+     * Angehaengt, wenn ein Lauf enden will, nachdem er Dateien geaendert, aber
+     * danach nichts mehr ausgefuehrt hat.
+     *
+     * <p>Das ist die Lehre aus {@code --abgleich}, als Mechanik statt als
+     * Frage. Dort sollte das Modell vor dem Abschluss seine Anforderungen
+     * durchgehen; in vier von sechs Faellen hakte es sie in Prosa ab und rief
+     * kein Werkzeug mehr auf -- einmal, waehrend {@code from typing import dict}
+     * jeden Import brach. Ein Modell, das sich fertig glaubt, bestaetigt das,
+     * wenn man es fragt. Hier wird nicht nach einer Ueberzeugung gefragt,
+     * sondern eine Beobachtung verlangt: ein Aufruf, dessen Ausgabe falsch sein
+     * kann.
+     *
+     * <p>Ausgeloest wird mechanisch, nicht nach Gefuehl: ein erfolgreiches
+     * {@code write}/{@code edit} an etwas anderem als Doku, und kein
+     * {@code bash} danach. Einmal je Auftrag, und mit Ausweg -- nicht alles
+     * laesst sich ausfuehren.
+     */
+    private static final String UNGEPRUEFT = """
+            Du hast %s geaendert und danach nichts mehr ausgefuehrt. Pruefe das \
+            Ergebnis jetzt mit einem Werkzeugaufruf, dessen Ausgabe dir widersprechen \
+            kann: die Tests, ein Build oder ein kurzer Aufruf des geaenderten Codes. \
+            Falls sich das hier nicht pruefen laesst, sag in einem Satz warum.""";
+
+    /** Endungen, deren Aenderung keinen Pruefaufruf verlangt. */
+    private static final java.util.Set<String> DOKU = java.util.Set.of(
+            ".md", ".txt", ".rst", ".adoc");
 
     public Ergebnis lauf(String systemPrompt, String aufgabe) {
         Transcript t = new Transcript(schaetzer);
@@ -193,6 +210,10 @@ public final class Agent {
         int aufrufeGesamt = 0;
         int fehlerfolge = 0;
         boolean untaetigAngestossen = false;
+        boolean pruefungAngestossen = false;
+        // Geaendert seit dem letzten bash, in Aufrufreihenfolge. Leer heisst:
+        // nichts zu pruefen, oder schon geprueft.
+        java.util.LinkedHashSet<String> ungeprueft = new java.util.LinkedHashSet<>();
 
         for (int zug = 1; zug <= maxZuege; zug++) {
 
@@ -260,6 +281,12 @@ public final class Agent {
                     t.add(new UserMessage(NICHTS_GETAN));
                     continue;
                 }
+                if (!ungeprueft.isEmpty() && !pruefungAngestossen) {
+                    pruefungAngestossen = true;
+                    beobachter.hinweis("Abschluss ohne Pruefung nach Aenderung, stosse an");
+                    t.add(new UserMessage(String.format(UNGEPRUEFT, aufzaehlung(ungeprueft))));
+                    continue;
+                }
                 return new Ergebnis(Status.FERTIG, zug, aufrufeGesamt,
                                     a.message().content(), null);
             }
@@ -281,6 +308,7 @@ public final class Agent {
                 t.addWerkzeugErgebnis(aufrufe.get(i), r.text());
                 beobachter.werkzeugFertig(aufrufe.get(i), r);
                 fehlerfolge = r.istFehler() ? fehlerfolge + 1 : 0;
+                merkeAenderung(aufrufe.get(i), r, ungeprueft);
             }
 
             // -------------------------------------------------- Schleife
@@ -297,6 +325,26 @@ public final class Agent {
 
         return new Ergebnis(Status.ZUGLIMIT, maxZuege, aufrufeGesamt, null,
                 "Zuglimit " + maxZuege + " erreicht.");
+    }
+
+    /** Fuehrt die Liste der ungeprueften Aenderungen nach einem Aufruf nach. */
+    private static void merkeAenderung(ToolCall tc, Tool.ToolResult r,
+                                       java.util.Set<String> ungeprueft) {
+        // Jedes bash zaehlt, auch ein abgelehntes: wer es versucht hat und
+        // abgewiesen wurde, soll nicht gleich noch einmal dazu gedraengt werden.
+        if ("bash".equals(tc.name())) { ungeprueft.clear(); return; }
+        if (r.istFehler() || !("write".equals(tc.name()) || "edit".equals(tc.name()))) return;
+        String pfad = tc.kurz();
+        int punkt = pfad.lastIndexOf('.');
+        if (punkt >= 0 && DOKU.contains(pfad.substring(punkt).toLowerCase())) return;
+        ungeprueft.add(pfad);
+    }
+
+    private static String aufzaehlung(java.util.Set<String> pfade) {
+        List<String> l = new ArrayList<>(pfade);
+        if (l.size() == 1) return l.get(0);
+        if (l.size() <= 3) return String.join(", ", l);
+        return String.join(", ", l.subList(0, 3)) + " und " + (l.size() - 3) + " weitere Dateien";
     }
 
     /** Werkzeuge nebenlaeufig, Ergebnisse in Aufrufreihenfolge. */

@@ -65,7 +65,9 @@ public final class WriteTool implements Tool {
                 : (int) inhalt.chars().filter(c -> c == '\n').count()
                   + (inhalt.endsWith("\n") ? 0 : 1);
 
-        return ToolResult.ok((neu ? "angelegt: " : "ueberschrieben: ") + ws.relativ(p)
-                + " (" + zeilen + " Zeilen, " + inhalt.length() + " Zeichen)");
+        String text = (neu ? "angelegt: " : "ueberschrieben: ") + ws.relativ(p)
+                + " (" + zeilen + " Zeilen, " + inhalt.length() + " Zeichen)";
+        String befund = Syntaxpruefung.befund(p, ws);
+        return ToolResult.ok(befund == null ? text : text + "\n" + befund);
     }
 }

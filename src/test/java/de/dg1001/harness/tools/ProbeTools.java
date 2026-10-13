@@ -269,6 +269,33 @@ public final class ProbeTools {
                        + "\"aenderungen\":[{\"alt\":\"a\",\"neu\":\"b\"}]}"),
                t -> t.contains("nicht beides"));
 
+        // --------------------------------------------------- Syntaxpruefung
+        pruefe("write: Python-Syntaxfehler wird mit Zeile gemeldet",
+               lauf(r, ws, "write", "{\"pfad\":\"kaputt.py\",\"inhalt\":\"def f(:\\n    pass\\n\"}"),
+               t -> t.contains("angelegt") && t.contains("Syntaxfehler in kaputt.py")
+                    && t.contains("Zeile 1"));
+        pruefe("write: ... ist aber kein Fehlschlag des Aufrufs",
+               String.valueOf(r.fuehreAus(new ToolCall("id", "write",
+                       "{\"pfad\":\"kaputt.py\",\"inhalt\":\"def f(:\\n\"}"), ws).istFehler()),
+               t -> t.equals("false"));
+        pruefe("write: gueltiges Python bleibt ohne Befund",
+               lauf(r, ws, "write", "{\"pfad\":\"gut.py\",\"inhalt\":\"def f():\\n    return 1\\n\"}"),
+               t -> !t.contains("Syntaxfehler"));
+        pruefe("write: ... und hinterlaesst kein __pycache__",
+               String.valueOf(Files.exists(tmp.resolve("__pycache__"))), t -> t.equals("false"));
+        pruefe("edit: Syntaxfehler durch edit wird gemeldet",
+               lauf(r, ws, "edit", "{\"pfad\":\"gut.py\",\"alt\":\"return 1\",\"neu\":\"return (1\"}"),
+               t -> t.contains("geaendert") && t.contains("Syntaxfehler in gut.py"));
+        pruefe("write: kaputtes JSON wird gemeldet",
+               lauf(r, ws, "write", "{\"pfad\":\"k.json\",\"inhalt\":\"{\\\"a\\\": 1,}\"}"),
+               t -> t.contains("Syntaxfehler in k.json"));
+        pruefe("write: Shell-Syntaxfehler wird gemeldet",
+               lauf(r, ws, "write", "{\"pfad\":\"k.sh\",\"inhalt\":\"if true; then\\necho x\\n\"}"),
+               t -> t.contains("Syntaxfehler in k.sh"));
+        pruefe("write: unbekannte Endung wird nicht geprueft",
+               lauf(r, ws, "write", "{\"pfad\":\"x.unbekannt\",\"inhalt\":\"def f(:\"}"),
+               t -> !t.contains("Syntaxfehler"));
+
         // -------------------------------------------------------------- glob
         pruefe("glob: findet nach Endung",
                lauf(r, ws, "glob", "{\"muster\":\"**/*.txt\"}"),

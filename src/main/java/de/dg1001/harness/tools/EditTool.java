@@ -114,6 +114,8 @@ public final class EditTool implements Tool {
          .append(", ").append(inhalt.length()).append(" -> ").append(stand.length())
          .append(" Zeichen)");
         for (String h : hinweise) b.append('\n').append(h);
+        String befund = Syntaxpruefung.befund(p, ws);
+        if (befund != null) b.append('\n').append(befund);
         return ToolResult.ok(b.toString());
     }
 

@@ -286,6 +286,46 @@ public final class ProbeSchleife {
                        .contains("kein einziges Werkzeug benutzt"));
         }
 
+        // ------------------------------------- Pruefung nach Aenderung
+        {
+            Skript s = new Skript(ruft("write", "{\"pfad\":\"neu.py\",\"inhalt\":\"x = 1\\n\"}"),
+                                  text("fertig", FinishReason.STOP),
+                                  ruft("bash", "{\"kommando\":\"python3 neu.py\"}"),
+                                  text("geprueft und fertig", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            String gesehen = s.gesehen.get(2).toString();
+            pruefe("Aenderung ohne Ausfuehrung: Anstoss vor dem Abschluss",
+                   gesehen.contains("neu.py geaendert und danach nichts mehr ausgefuehrt"));
+            pruefe("... danach wird der Abschluss angenommen",
+                   e.status() == Agent.Status.FERTIG && "geprueft und fertig".equals(e.abschluss()));
+        }
+        {
+            Skript s = new Skript(ruft("write", "{\"pfad\":\"neu2.py\",\"inhalt\":\"x = 1\\n\"}"),
+                                  ruft("bash", "{\"kommando\":\"python3 neu2.py\"}"),
+                                  text("fertig", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            pruefe("bash nach der Aenderung: kein Anstoss", e.status() == Agent.Status.FERTIG
+                   && s.gesehen.size() == 3);
+        }
+        {
+            Skript s = new Skript(ruft("write", "{\"pfad\":\"LIESMICH.md\",\"inhalt\":\"# x\\n\"}"),
+                                  text("fertig", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            pruefe("nur Doku geaendert: kein Anstoss",
+                   e.status() == Agent.Status.FERTIG && s.gesehen.size() == 2);
+        }
+        {
+            // Einmal je Auftrag: wer nach dem Anstoss begruendet, warum es
+            // nichts auszufuehren gibt, wird nicht erneut gedraengt.
+            Skript s = new Skript(ruft("write", "{\"pfad\":\"neu3.py\",\"inhalt\":\"x = 1\\n\"}"),
+                                  text("fertig", FinishReason.STOP),
+                                  text("laesst sich hier nicht ausfuehren", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            pruefe("Anstoss hoechstens einmal", e.status() == Agent.Status.FERTIG
+                   && s.gesehen.size() == 3
+                   && "laesst sich hier nicht ausfuehren".equals(e.abschluss()));
+        }
+
         // ----------------------------------------------------- Abbruch
         // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
         // lokal dauert ein Zug Minuten.
