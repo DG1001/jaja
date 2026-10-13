@@ -199,6 +199,76 @@ public final class ProbeTools {
                + Files.readString(tmp.resolve("re.txt")),
                t -> t.contains("X und abc"));
 
+        // -------------------------------------------------- edit, tolerant
+        String py = "class Kasse:\n    def summe(self, posten):\n        gesamt = 0\n"
+                  + "        for p in posten:\n            gesamt += p.preis\n        return gesamt\n";
+        Files.writeString(tmp.resolve("k.py"), py);
+        pruefe("edit: Einrueckung abgezaehlt statt kopiert wird gefunden",
+               lauf(r, ws, "edit", "{\"pfad\":\"k.py\",\"alt\":\"for p in posten:\\n    gesamt += p.preis\","
+                       + "\"neu\":\"for p in posten:\\n    gesamt += p.preis * p.menge\"}"),
+               t -> t.contains("geaendert") && t.contains("abweichendem Leerraum")
+                    && t.contains("Einrueckung"));
+        pruefe("edit: ... und 'neu' wird an die Einrueckung der Datei angepasst",
+               Files.readString(tmp.resolve("k.py")),
+               t -> t.contains("        for p in posten:\n            gesamt += p.preis * p.menge\n"
+                               + "        return gesamt\n"));
+
+        Files.writeString(tmp.resolve("ws.txt"), "a = 1   \n\tb = 2\nc = 3\n");
+        pruefe("edit: Tabulator und Leerzeichen am Zeilenende stoeren nicht",
+               lauf(r, ws, "edit", "{\"pfad\":\"ws.txt\",\"alt\":\"a = 1\\n    b = 2\\n\",\"neu\":\"a = 10\\n    b = 20\\n\"}")
+               + Files.readString(tmp.resolve("ws.txt")),
+               t -> t.contains("geaendert") && t.contains("a = 10\n\tb = 20\nc = 3\n"));
+
+        Files.writeString(tmp.resolve("crlf.txt"), "eins\r\nzwei\r\ndrei\r\n");
+        pruefe("edit: CRLF-Datei, 'alt' mit LF",
+               lauf(r, ws, "edit", "{\"pfad\":\"crlf.txt\",\"alt\":\"eins\\nzwei\",\"neu\":\"EINS\\nZWEI\"}")
+               + Files.readString(tmp.resolve("crlf.txt")),
+               t -> t.contains("CRLF") && t.contains("EINS\r\nZWEI\r\ndrei\r\n"));
+
+        Files.writeString(tmp.resolve("doppelt.py"), "def a():\n    x = 1\n\ndef b():\n        x = 1\n");
+        pruefe("edit: mehrdeutig bei tolerantem Leerraum wird abgelehnt",
+               lauf(r, ws, "edit", "{\"pfad\":\"doppelt.py\",\"alt\":\"x = 1\",\"neu\":\"x = 2\"}"),
+               t -> t.contains("2-mal") && t.contains("Zeile 2, 5"));
+        pruefe("edit: ... und die Datei bleibt unveraendert",
+               Files.readString(tmp.resolve("doppelt.py")), t -> !t.contains("x = 2"));
+
+        pruefe("edit: woertlicher Mehrfachtreffer nennt die Zeilen",
+               lauf(r, ws, "edit", "{\"pfad\":\"doppelt.py\",\"alt\":\"x = 1\\n\",\"neu\":\"x = 2\\n\"}"),
+               t -> t.contains("2-mal") && t.contains("Zeile 2, 5"));
+
+        Files.writeString(tmp.resolve("diag.py"),
+                "def rabatt(menge, preis):\n    if menge > 10:\n        return preis * 0.9\n    return preis\n");
+        String diag = lauf(r, ws, "edit", "{\"pfad\":\"diag.py\",\"alt\":\"    if menge >= 10:\\n"
+                + "        return preis * 0.9\",\"neu\":\"x\"}");
+        pruefe("edit: inhaltliche Abweichung wird NICHT ueberbrueckt",
+               Files.readString(tmp.resolve("diag.py")), t -> t.contains("menge > 10") && !t.contains("x"));
+        pruefe("edit: ... aber die aehnlichste Stelle wird gezeigt",
+               diag, t -> t.contains("Zeilen 2-3") && t.contains("2\t    if menge > 10:"));
+        pruefe("edit: ... samt erster abweichender Zeile",
+               diag, t -> t.contains("Datei: if menge > 10:") && t.contains("alt:   if menge >= 10:"));
+
+        Files.writeString(tmp.resolve("m.txt"), "rot\ngruen\nblau\n");
+        pruefe("edit: mehrere Aenderungen in einem Aufruf",
+               lauf(r, ws, "edit", "{\"pfad\":\"m.txt\",\"aenderungen\":["
+                       + "{\"alt\":\"rot\",\"neu\":\"ROT\"},{\"alt\":\"blau\",\"neu\":\"BLAU\"}]}")
+               + Files.readString(tmp.resolve("m.txt")),
+               t -> t.contains("2 Aenderungen") && t.contains("ROT\ngruen\nBLAU\n"));
+        pruefe("edit: scheitert eine Aenderung, wird keine geschrieben",
+               lauf(r, ws, "edit", "{\"pfad\":\"m.txt\",\"aenderungen\":["
+                       + "{\"alt\":\"ROT\",\"neu\":\"rot\"},{\"alt\":\"lila\",\"neu\":\"x\"}]}")
+               + Files.readString(tmp.resolve("m.txt")),
+               t -> t.contains("Aenderung 2 von 2") && t.contains("Nichts geschrieben")
+                    && t.endsWith("ROT\ngruen\nBLAU\n"));
+        pruefe("edit: spaetere Aenderung sieht den Stand nach der frueheren",
+               lauf(r, ws, "edit", "{\"pfad\":\"m.txt\",\"aenderungen\":["
+                       + "{\"alt\":\"gruen\",\"neu\":\"GELB\"},{\"alt\":\"GELB\\nBLAU\",\"neu\":\"ende\"}]}")
+               + Files.readString(tmp.resolve("m.txt")),
+               t -> t.endsWith("ROT\nende\n"));
+        pruefe("edit: alt und aenderungen zugleich wird abgelehnt",
+               lauf(r, ws, "edit", "{\"pfad\":\"m.txt\",\"alt\":\"a\",\"neu\":\"b\","
+                       + "\"aenderungen\":[{\"alt\":\"a\",\"neu\":\"b\"}]}"),
+               t -> t.contains("nicht beides"));
+
         // -------------------------------------------------------------- glob
         pruefe("glob: findet nach Endung",
                lauf(r, ws, "glob", "{\"muster\":\"**/*.txt\"}"),
