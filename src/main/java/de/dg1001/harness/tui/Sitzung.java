@@ -5,6 +5,7 @@ import de.dg1001.harness.agent.ContextBudget;
 import de.dg1001.harness.agent.Freigabe;
 import de.dg1001.harness.agent.TokenSchaetzer;
 import de.dg1001.harness.agent.Transcript;
+import de.dg1001.harness.agent.Umgebungsbild;
 import de.dg1001.harness.wire.Json;
 import de.dg1001.harness.wire.Messages;
 import de.dg1001.harness.wire.Messages.Message;
@@ -135,7 +136,10 @@ public final class Sitzung {
     // ------------------------------------------------------------- ein Auftrag
 
     private void beauftrage(String text, ExecutorService exec) throws IOException {
-        if (verlauf.anzahl() == 0) verlauf.beginne(systemPrompt, text);
+        // Das Umgebungsbild auch hier, nicht nur im Stapelbetrieb: gemessen
+        // halbierte es dort die Zuege bis zum ersten Schreiben (12 -> 6).
+        if (verlauf.anzahl() == 0)
+            verlauf.beginne(systemPrompt, Umgebungsbild.anhaengen(text, ws));
         else                       verlauf.add(new UserMessage(text));
 
         anzeige.leerzeile();
@@ -242,8 +246,9 @@ public final class Sitzung {
         try { zeilen = Files.readAllLines(ziel).size(); } catch (IOException ex) { zeilen = 0; }
 
         verlauf = new Transcript(schaetzer);
-        verlauf.beginne(systemPrompt, "Wir setzen eine laufende Arbeit fort. Der Stand steht in "
-                + notizdatei + ". Lies die Datei zuerst und arbeite dann dort weiter.");
+        verlauf.beginne(systemPrompt, Umgebungsbild.anhaengen(
+                "Wir setzen eine laufende Arbeit fort. Der Stand steht in "
+                + notizdatei + ". Lies die Datei zuerst und arbeite dann dort weiter.", ws));
         schonAngeboten = false;
 
         anzeige.zeile("  " + Terminal.GRUEN + "Uebergabe in " + notizdatei + " (" + zeilen
@@ -318,7 +323,7 @@ public final class Sitzung {
 
             if (c == 3) {
                 beiAbbruch.run();
-                anzeige.hinweis("Abbruch angefordert — der laufende Schritt wird noch beendet");
+                anzeige.hinweis("Abbruch angefordert");
                 continue;
             }
 

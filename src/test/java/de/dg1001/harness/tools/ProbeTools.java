@@ -28,6 +28,36 @@ public final class ProbeTools {
                lauf(r, ws, "read", "{\"pfad\":\"hallo.txt\",\"ab_zeile\":2,\"zeilen\":1}"),
                t -> t.contains("2\tzweite") && !t.contains("erste"));
 
+        // 300 Zeilen a ~50 Zeichen: frueher Kopf und Fuss, die Mitte nur als
+        // Verweis auf eine Auslagerungsdatei.
+        StringBuilder mittel = new StringBuilder();
+        for (int i = 1; i <= 300; i++)
+            mittel.append("    public int feld_nummer_").append(i).append(" = 0; // Kommentar\n");
+        Files.writeString(tmp.resolve("Gross.java"), mittel.toString());
+        pruefe("read: mittlere Datei kommt am Stueck",
+               lauf(r, ws, "read", "{\"pfad\":\"Gross.java\"}"),
+               t -> t.contains("150\t") && t.contains("300\t") && !t.contains("ausgelassen")
+                    && !t.contains("weiterlesen"));
+
+        StringBuilder riesig = new StringBuilder();
+        for (int i = 1; i <= 2000; i++)
+            riesig.append("zeile_").append(i).append(" ").append("x".repeat(40)).append('\n');
+        Files.writeString(tmp.resolve("riesig.txt"), riesig.toString());
+        String seite = lauf(r, ws, "read", "{\"pfad\":\"riesig.txt\"}");
+        pruefe("read: grosse Datei endet an einer Zeilengrenze mit Weiterlesen",
+               seite, t -> t.length() < ReadTool.MAX_ZEICHEN + 200
+                       && t.contains("weiterlesen") && t.contains("1\tzeile_1 "));
+        int weiter = Integer.parseInt(seite.replaceAll("(?s).*ab_zeile=(\\d+).*", "$1"));
+        pruefe("read: Weiterlesen schliesst lueckenlos an",
+               lauf(r, ws, "read", "{\"pfad\":\"riesig.txt\",\"ab_zeile\":" + weiter + "}"),
+               t -> t.startsWith(weiter + "\tzeile_" + weiter + " ")
+                    && !seite.contains("\n" + weiter + "\t"));
+
+        Files.writeString(tmp.resolve("lang.js"), "a".repeat(50_000) + "\nzwei\n");
+        pruefe("read: ueberlange Zeile wird gekuerzt, die naechste bleibt",
+               lauf(r, ws, "read", "{\"pfad\":\"lang.js\"}"),
+               t -> t.contains("Zeile gekuerzt") && t.contains("2\tzwei"));
+
         pruefe("read: fehlende Datei meldet Fehler",
                lauf(r, ws, "read", "{\"pfad\":\"gibtsnicht.txt\"}"),
                t -> t.toLowerCase().contains("gibt es nicht"));
@@ -84,6 +114,15 @@ public final class ProbeTools {
         Tool.ToolResult gross = r.fuehreAus(
                 new ToolCall("x", "bash",
                         "{\"kommando\":\"python3 -c \\\"print('z'*40000)\\\"\"}"), ws);
+        try (var k = new BashTool.KopfFuss(10); var klein = new BashTool.KopfFuss(10)) {
+            k.write("0123456789ABCDEFGHIJ".getBytes());
+            pruefe("bash: Puffer behaelt Anfang und Ende, sagt was fehlt",
+                   k.text(), t -> t.startsWith("01234") && t.endsWith("FGHIJ")
+                                  && t.contains("10 Bytes verworfen"));
+            klein.write("abc".getBytes());
+            pruefe("bash: kleiner Puffer bleibt unveraendert", klein.text(), t -> t.equals("abc"));
+        }
+
         pruefe("Auslagerung: gekuerzt und Pfad genannt",
                gross.text(),
                t -> t.contains("ausgelassen") && gross.ausgelagert() != null
@@ -118,6 +157,20 @@ public final class ProbeTools {
         pruefe("write: zweites Mal meldet ueberschrieben",
                lauf(r, ws, "write", "{\"pfad\":\"neu/tief/a.txt\",\"inhalt\":\"x\"}"),
                t -> t.contains("ueberschrieben"));
+        Path draussen = Files.createTempDirectory("harness-draussen");
+        Files.createSymbolicLink(tmp.resolve("link"), draussen);
+        pruefe("write: Verweis nach draussen wird abgewiesen",
+               lauf(r, ws, "write", "{\"pfad\":\"link/boese.txt\",\"inhalt\":\"x\"}"),
+               t -> t.contains("nach draussen") && !Files.exists(draussen.resolve("boese.txt")));
+        pruefe("write: auch in tieferen, noch fehlenden Verzeichnissen",
+               lauf(r, ws, "write", "{\"pfad\":\"link/a/b/c.txt\",\"inhalt\":\"x\"}"),
+               t -> t.contains("nach draussen") && !Files.exists(draussen.resolve("a")));
+        Files.createSymbolicLink(tmp.resolve("leer-link"), draussen.resolve("gibts-nicht.txt"));
+        pruefe("write: Verweis ins Leere wird abgewiesen",
+               lauf(r, ws, "write", "{\"pfad\":\"leer-link\",\"inhalt\":\"x\"}"),
+               t -> t.contains("Verweis ohne Ziel")
+                    && !Files.exists(draussen.resolve("gibts-nicht.txt")));
+
         pruefe("write: Ausbruch wird abgewiesen",
                lauf(r, ws, "write", "{\"pfad\":\"../weg.txt\",\"inhalt\":\"x\"}"),
                t -> t.contains("ausserhalb"));

@@ -101,6 +101,27 @@ public final class Workspace {
         return echt;
     }
 
+    /**
+     * Pruefung fuer ein Schreibziel, das es noch nicht geben muss.
+     *
+     * <p>{@link #pruefeVorhandenen} greift nur, wenn die Datei schon da ist.
+     * Beim Anlegen ist sie das nicht -- und dann fuehrte {@code link/neu.txt}
+     * mit {@code link -> /anderswo} geradewegs hinaus, ohne dass irgendeine
+     * Pruefung anschlug. Deshalb: den tiefsten vorhandenen Vorfahren echt
+     * aufloesen und den pruefen. Ein Verweis, der ins Leere zeigt, wird
+     * abgewiesen, weil sein Ziel beim Schreiben entstuende, wo immer es liegt.
+     */
+    public Path pruefeZiel(Path p) throws IOException {
+        if (Files.isSymbolicLink(p) && !Files.exists(p))
+            throw new AusbruchFehler("Verweis ohne Ziel: " + relativ(p));
+        if (Files.exists(p)) return pruefeVorhandenen(p);
+        Path vorfahr = p.getParent();
+        while (vorfahr != null && !Files.exists(vorfahr)) vorfahr = vorfahr.getParent();
+        if (vorfahr != null && !vorfahr.toRealPath().startsWith(wurzel))
+            throw new AusbruchFehler("Verweis zeigt nach draussen: " + relativ(vorfahr));
+        return p;
+    }
+
     /** Fuer Ausgaben ans Modell: kurze, wurzelrelative Pfade statt absoluter. */
     public String relativ(Path p) {
         Path a = p.toAbsolutePath().normalize();

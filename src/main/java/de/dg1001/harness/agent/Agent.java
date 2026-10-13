@@ -36,6 +36,9 @@ public final class Agent {
 
     private Freigabe freigabe = Freigabe.ALLES;
 
+    /** Der Faden, der gerade {@link #lauf(Transcript)} ausfuehrt, sonst null. */
+    private volatile Thread laeufer;
+
     /** Zeichen der Werkzeugbeschreibungen. Muss bei der Kalibrierung
      *  mitgezaehlt werden: prompt_tokens des Servers enthaelt sie, die
      *  Nachrichtenlaenge nicht. Ohne das liegt das Verhaeltnis unter 1 und
@@ -69,9 +72,22 @@ public final class Agent {
 
     public Agent mitFreigabe(Freigabe f) { this.freigabe = f; return this; }
 
-    /** Bricht den laufenden Zug ab. Darf aus einem anderen Faden gerufen
-     *  werden -- genau dafuer ist sie da. */
-    public void brichAb() { abbruch.set(true); }
+    /**
+     * Bricht den laufenden Zug ab. Darf aus einem anderen Faden gerufen
+     * werden -- genau dafuer ist sie da.
+     *
+     * <p>Unterbricht den Faden, statt nur das Kennzeichen zu setzen. Vorher
+     * wartete ein Ctrl-C das Ende der laufenden Anfrage ab, und die dauert
+     * lokal Minuten (gemessen: elf fuer einen Zug). Unterbrochen wird die
+     * HTTP-Anfrage, ein laufendes bash samt Kindern und eine offene
+     * Freigabefrage; der Verlauf bleibt dabei gueltig, weil Ergebnisse nur
+     * vollstaendig und in Aufrufreihenfolge angehaengt werden.
+     */
+    public void brichAb() {
+        abbruch.set(true);
+        Thread t = laeufer;
+        if (t != null) t.interrupt();
+    }
 
     public void abbruchZuruecksetzen() { abbruch.set(false); }
 
@@ -159,6 +175,17 @@ public final class Agent {
      * ruft das hier.
      */
     public Ergebnis lauf(Transcript t) {
+        laeufer = Thread.currentThread();
+        try {
+            return schleife(t);
+        } finally {
+            laeufer = null;
+            // Ein Abbruch kurz vor Schluss darf nicht am Faden kleben bleiben.
+            Thread.interrupted();
+        }
+    }
+
+    private Ergebnis schleife(Transcript t) {
         List<ToolSpec> werkzeuge = registry.specs();
         t.setzeGrundlast(grundlast(werkzeuge));
 

@@ -48,7 +48,7 @@ public final class WriteTool implements Tool {
 
         Path p;
         try {
-            p = ws.aufloesen(pfad);
+            p = ws.pruefeZiel(ws.aufloesen(pfad));
         } catch (Workspace.AusbruchFehler e) {
             return ToolResult.fehler(e.getMessage());
         }

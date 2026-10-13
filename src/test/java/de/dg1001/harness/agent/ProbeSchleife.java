@@ -286,6 +286,48 @@ public final class ProbeSchleife {
                        .contains("kein einziges Werkzeug benutzt"));
         }
 
+        // ----------------------------------------------------- Abbruch
+        // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
+        // lokal dauert ein Zug Minuten.
+        {
+            ChatEndpunkt haengt = (verlauf, w) -> {
+                try {
+                    Thread.sleep(60_000);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("unterbrochen");
+                }
+                return text("zu spaet", FinishReason.STOP);
+            };
+            Agent a = new Agent(haengt, ToolRegistry.vorgabe(), new Workspace(tmp),
+                                ContextBudget.vorgabe(65536, 16384), 10, false);
+            var f = java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> a.lauf("sys", "Tu etwas."));
+            Thread.sleep(300);
+            long t0 = System.nanoTime();
+            a.brichAb();
+            Agent.Ergebnis e = f.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            pruefe("Abbruch unterbricht die laufende Anfrage (" + ms + " ms)",
+                   e.status() == Agent.Status.ABGEBROCHEN && ms < 2_000);
+        }
+        {
+            // Und ein laufendes bash: Abbruch statt Zeitgrenze abwarten.
+            Skript s = new Skript(ruft("bash", "{\"kommando\":\"sleep 30\"}"),
+                                  text("fertig", FinishReason.STOP));
+            Agent a = new Agent(s, ToolRegistry.vorgabe(), new Workspace(tmp),
+                                ContextBudget.vorgabe(65536, 16384), 10, false);
+            var f = java.util.concurrent.CompletableFuture.supplyAsync(
+                    () -> a.lauf("sys", "Tu etwas."));
+            Thread.sleep(800);
+            long t0 = System.nanoTime();
+            a.brichAb();
+            Agent.Ergebnis e = f.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            pruefe("Abbruch beendet ein laufendes bash (" + ms + " ms)",
+                   e.status() == Agent.Status.ABGEBROCHEN && ms < 5_000);
+        }
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");

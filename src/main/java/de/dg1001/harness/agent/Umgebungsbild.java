@@ -241,13 +241,26 @@ public final class Umgebungsbild {
             pb.redirectErrorStream(true);          // java -version schreibt nach stderr
             p = pb.start();
             p.getOutputStream().close();
-            String aus = new String(p.getInputStream().readAllBytes());
-            if (!p.waitFor(FRIST_MS, TimeUnit.MILLISECONDS)) {
-                p.destroyForcibly();
-                return "";
-            }
-            return p.exitValue() == 0 || !aus.isBlank() ? aus.strip() : "";
-        } catch (IOException | InterruptedException e) {
+            // Lesen nebenlaeufig zum Warten -- derselbe Fehler, den BashTool
+            // schon einmal hatte: readAllBytes() vor waitFor() blockiert, bis
+            // der Prozess endet, und die Frist wird nie geprueft. Ein haengendes
+            // "mvn -v" oder "git status" auf einem Netzlaufwerk hielte dann den
+            // ersten Zug unbegrenzt auf.
+            Process proz = p;
+            var aus = new java.util.concurrent.CompletableFuture<String>();
+            Thread.ofVirtual().start(() -> {
+                try (var in = proz.getInputStream()) {
+                    aus.complete(new String(in.readAllBytes()));
+                } catch (IOException e) {
+                    aus.complete("");
+                }
+            });
+            if (!p.waitFor(FRIST_MS, TimeUnit.MILLISECONDS)) return "";
+            String text = aus.get(500, TimeUnit.MILLISECONDS);
+            return p.exitValue() == 0 || !text.isBlank() ? text.strip() : "";
+        } catch (IOException | InterruptedException
+                 | java.util.concurrent.ExecutionException
+                 | java.util.concurrent.TimeoutException e) {
             // Werkzeug nicht vorhanden ist der Normalfall, kein Fehler.
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return "";

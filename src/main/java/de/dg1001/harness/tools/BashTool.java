@@ -71,7 +71,7 @@ public final class BashTool implements Tool {
         // Strom schliesst -- und der schliesst erst, wenn der Prozess endet.
         // Die Zeitgrenze greift dann nie. (Genau so beim ersten Versuch
         // passiert; der Test hat es gefunden.)
-        var puffer = new java.io.ByteArrayOutputStream();
+        var puffer = new KopfFuss(MAX_PUFFER);
         Thread leser = Thread.ofVirtual().start(() -> {
             try (InputStream in = p.getInputStream()) {
                 in.transferTo(puffer);
@@ -82,30 +82,24 @@ public final class BashTool implements Tool {
 
         boolean rechtzeitig;
         try {
-            // Die Nachkommen VOR dem Toeten einsammeln: sobald die Shell weg
-            // ist, werden ihre Kinder an init umgehaengt und sind ueber
-            // descendants() nicht mehr auffindbar.
             rechtzeitig = p.waitFor(sekunden, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
+            // Ctrl-C in der Sitzung. Dieselbe Sorgfalt wie bei der Zeitgrenze:
+            // sonst laeuft der Testlauf oder Server, den die Shell gestartet
+            // hat, nach dem Abbruch als Waise weiter.
             Thread.currentThread().interrupt();
-            p.destroyForcibly();
+            beende(p);
             return ToolResult.fehler("unterbrochen");
         }
 
         if (!rechtzeitig) {
-            java.util.List<ProcessHandle> nachkommen = p.descendants().toList();
-            p.destroy();                              // SIGTERM
+            beende(p);
             try {
-                if (!p.waitFor(3, TimeUnit.SECONDS))
-                    p.destroyForcibly();              // SIGKILL, sonst bleibt er stehen
-                beendeNachkommen(nachkommen);
                 leser.join(java.time.Duration.ofSeconds(2));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-p.destroyForcibly();
-                beendeNachkommen(p.descendants().toList());
             }
-            String t = puffer.toString(StandardCharsets.UTF_8)
+            String t = puffer.text()
                      + "\n[abgebrochen nach " + sekunden + " s]";
             return Spill.vielleichtAuslagern(t, ws, "bash-timeout", true);
         }
@@ -115,7 +109,7 @@ p.destroyForcibly();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        String ausgabe = puffer.toString(StandardCharsets.UTF_8);
+        String ausgabe = puffer.text();
 
         int code = p.exitValue();
         long ms = (System.nanoTime() - t0) / 1_000_000;
@@ -126,6 +120,70 @@ p.destroyForcibly();
         b.append("[Rueckgabewert ").append(code).append(", ").append(ms).append(" ms]");
 
         return Spill.vielleichtAuslagern(b.toString(), ws, "bash", code != 0);
+    }
+
+    /**
+     * Beendet die Shell samt allem, was sie gestartet hat.
+     *
+     * <p>Die Nachkommen werden VOR dem Toeten eingesammelt: sobald die Shell
+     * weg ist, werden ihre Kinder an init umgehaengt und sind ueber
+     * {@code descendants()} nicht mehr auffindbar.
+     */
+    private static void beende(Process p) {
+        java.util.List<ProcessHandle> nachkommen = p.descendants().toList();
+        p.destroy();                                  // SIGTERM
+        try {
+            if (!p.waitFor(3, TimeUnit.SECONDS))
+                p.destroyForcibly();                  // SIGKILL, sonst bleibt er stehen
+        } catch (InterruptedException e) {
+            // Schon unterbrochen (Ctrl-C): nicht warten, gleich hart.
+            p.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
+        beendeNachkommen(nachkommen);
+    }
+
+    /**
+     * Wie viel Ausgabe hoechstens im Speicher gehalten wird.
+     *
+     * <p>Ohne Deckel haelt ein {@code yes} oder ein Endlos-Log bis zur
+     * Zeitgrenze alles im Speicher -- bei 120 Sekunden Gigabytes, und der
+     * ganze Harness stirbt an OutOfMemoryError statt nur der Aufruf. Behalten
+     * werden Anfang und Ende: bei Testlaeufen steht das Wesentliche hinten.
+     */
+    static final int MAX_PUFFER = 4_000_000;
+
+    /** Haelt die erste und die letzte Haelfte von {@code deckel} Bytes. */
+    static final class KopfFuss extends java.io.OutputStream {
+        private final byte[] kopf, fuss;
+        private int imKopf = 0;
+        private long imFuss = 0;                      // insgesamt in den Fuss geschrieben
+
+        KopfFuss(int deckel) {
+            kopf = new byte[deckel / 2];
+            fuss = new byte[deckel - deckel / 2];
+        }
+
+        @Override public synchronized void write(int b) {
+            if (imKopf < kopf.length) { kopf[imKopf++] = (byte) b; return; }
+            fuss[(int) (imFuss++ % fuss.length)] = (byte) b;
+        }
+
+        @Override public synchronized void write(byte[] b, int off, int len) {
+            for (int i = 0; i < len; i++) write(b[off + i]);
+        }
+
+        synchronized String text() {
+            String vorn = new String(kopf, 0, imKopf, StandardCharsets.UTF_8);
+            if (imFuss <= fuss.length)
+                return vorn + new String(fuss, 0, (int) imFuss, StandardCharsets.UTF_8);
+            int start = (int) (imFuss % fuss.length);
+            byte[] hinten = new byte[fuss.length];
+            System.arraycopy(fuss, start, hinten, 0, fuss.length - start);
+            System.arraycopy(fuss, 0, hinten, fuss.length - start, start);
+            return vorn + "\n[… " + (imFuss - fuss.length) + " Bytes verworfen …]\n"
+                 + new String(hinten, StandardCharsets.UTF_8);
+        }
     }
 
     /**
