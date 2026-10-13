@@ -119,6 +119,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
+| `--erkunden` | off | add `erkunde`: a read-only sub-agent answers questions in its own context (experiment) |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
 
@@ -1025,6 +1026,15 @@ run used to end with it as the "answer". Only forms that cannot be anything
 else are recognised, and every name has to be a real tool. Missing or
 duplicate call ids are filled in.
 
+**A sub-agent, as an experiment: `--erkunden`.** `erkunde` answers a question
+about the project with a fresh agent that can only `glob`, `grep` and `read`,
+and returns just its answer. The bet is different from the map's, which 735
+runs settled: not fewer turns, but less **context**. At 65k the bottleneck is
+what ten reads leave in the transcript, not that there were ten. Whether it
+pays shows in input tokens — and those include the sub-agent's own, or a
+configuration using it would look cheaper than it is. Off until a benchmark
+says otherwise.
+
 **Large tool output is spilled to a file.** Output over 8,000 characters is
 cut to head + tail with the full text written to `.harness/spill/`, and the
 model is told the path. It can then grep the file instead of losing the turn.
@@ -1217,6 +1227,7 @@ headline numbers above predate them.
 | tool calls recovered from text | how often the notice appears per model and server |
 | streaming | wall clock, and the same results with `--kein-stream` |
 | `--max-denken` | where a cut-off saves more than it loses — default off until then |
+| `--erkunden` | input tokens per run, including the sub-agent's own |
 
 ## A note on the German
 

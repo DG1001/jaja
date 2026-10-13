@@ -29,6 +29,14 @@ public interface Tool {
      */
     ToolResult run(Map<String, Object> args, Workspace ws) throws Exception;
 
+    /**
+     * Token, die das Werkzeug selbst beim Modell verbraucht hat, insgesamt.
+     * Null fuer fast alle; ein Werkzeug, das einen Unteragenten startet,
+     * meldet hier dessen Verbrauch, damit die Summen des Laufs stimmen.
+     */
+    default long eingabeTokens() { return 0; }
+    default long ausgabeTokens() { return 0; }
+
     // ---------------------------------------------------------- Ergebnis
 
     /**

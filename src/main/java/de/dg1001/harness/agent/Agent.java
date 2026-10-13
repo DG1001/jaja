@@ -237,8 +237,13 @@ public final class Agent {
     public Ergebnis lauf(Transcript t) {
         laeufer = Thread.currentThread();
         long ein0 = eingabeTokens, aus0 = ausgabeTokens, t0 = System.nanoTime();
+        long wEin0 = registry.eingabeTokens(), wAus0 = registry.ausgabeTokens();
         try {
             Ergebnis e = schleife(t);
+            // Was Unteragenten verbraucht haben, gehoert zu diesem Lauf --
+            // sonst saehe eine Konfiguration mit ihnen billiger aus, als sie ist.
+            eingabeTokens += registry.eingabeTokens() - wEin0;
+            ausgabeTokens += registry.ausgabeTokens() - wAus0;
             beobachter.laufEnde(e, eingabeTokens - ein0, ausgabeTokens - aus0,
                                 (System.nanoTime() - t0) / 1_000_000);
             return e;

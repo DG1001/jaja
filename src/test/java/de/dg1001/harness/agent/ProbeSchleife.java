@@ -39,11 +39,13 @@ public final class ProbeSchleife {
     private static final class Skript implements ChatEndpunkt {
         private final Deque<ChatResponse> antworten = new ArrayDeque<>();
         final List<List<Message>> gesehen = new ArrayList<>();
+        final List<List<String>> werkzeuge = new ArrayList<>();
 
         Skript(ChatResponse... a) { for (ChatResponse x : a) antworten.add(x); }
 
         @Override public ChatResponse complete(List<Message> verlauf, List<ToolSpec> w) {
             gesehen.add(List.copyOf(verlauf));
+            werkzeuge.add(w == null ? List.of() : w.stream().map(ToolSpec::name).toList());
             if (antworten.isEmpty())
                 throw new IllegalStateException("Skript erschoepft — Schleife lief zu oft");
             return antworten.removeFirst();
@@ -378,6 +380,34 @@ public final class ProbeSchleife {
             pruefe("Aufruf im Text wird ausgefuehrt statt als Antwort genommen",
                    e.status() == Agent.Status.FERTIG && e.werkzeugaufrufe() == 1
                    && s.gesehen.get(1).toString().contains("inhalt"));
+        }
+
+        // ------------------------------------------------- Unteragent
+        {
+            Usage hundert = new Usage(100, 10, 110);
+            Skript s = new Skript(
+                    new ChatResponse(new AssistantMessage(null, null, List.of(new ToolCall("e1", "erkunde",
+                            "{\"frage\":\"wo steht der Inhalt?\"}"))), FinishReason.TOOL_CALLS, hundert),
+                    new ChatResponse(new AssistantMessage(null, null, List.of(new ToolCall("u1", "read",
+                            "{\"pfad\":\"a.txt\"}"))), FinishReason.TOOL_CALLS, hundert),
+                    new ChatResponse(new AssistantMessage("a.txt ist relevant", null, List.of()),
+                            FinishReason.STOP, hundert),
+                    new ChatResponse(new AssistantMessage("fertig", null, List.of()), FinishReason.STOP, hundert));
+            ToolRegistry reg = ToolRegistry.vorgabe();
+            reg.fuegeHinzu(new ErkundeTool(s, ContextBudget.vorgabe(65536, 16384), Beobachter.STILL));
+            Agent a = new Agent(s, reg, new Workspace(tmp), ContextBudget.vorgabe(65536, 16384), 10, false);
+            Agent.Ergebnis e = a.lauf("sys", "Finde den Inhalt.");
+            String haupt = s.gesehen.get(3).toString();
+            pruefe("erkunde: Antwort des Unteragenten kommt als Werkzeugergebnis",
+                   e.status() == Agent.Status.FERTIG && haupt.contains("a.txt ist relevant")
+                   && haupt.contains("erkundet in 2 Zuegen"));
+            pruefe("erkunde: seine Leseergebnisse bleiben in seinem Kontext",
+                   s.gesehen.get(2).toString().contains("1\tinhalt") && !haupt.contains("1\tinhalt"));
+            pruefe("erkunde: Unteragent hat nur lesende Werkzeuge",
+                   s.werkzeuge.get(1).equals(List.of("glob", "grep", "read"))
+                   && s.werkzeuge.get(0).contains("erkunde"));
+            pruefe("erkunde: seine Token zaehlen zum Lauf (" + a.eingabeTokens() + ")",
+                   a.eingabeTokens() == 400 && a.ausgabeTokens() == 40);
         }
 
         // ----------------------------------------------------- Abbruch

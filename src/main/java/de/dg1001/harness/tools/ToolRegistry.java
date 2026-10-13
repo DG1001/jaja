@@ -70,6 +70,15 @@ public final class ToolRegistry {
 
     public List<ToolSpec> specs() { return List.copyOf(specs); }
 
+    /** Was die Werkzeuge selbst beim Modell verbraucht haben (Unteragenten). */
+    public long eingabeTokens() {
+        return werkzeuge.values().stream().mapToLong(Tool::eingabeTokens).sum();
+    }
+
+    public long ausgabeTokens() {
+        return werkzeuge.values().stream().mapToLong(Tool::ausgabeTokens).sum();
+    }
+
     /**
      * Fuehrt einen Aufruf aus. Faengt alles ab, was das Werkzeug wirft:
      * ein Fehlschlag ist ein Ergebnis fuer das Modell, kein Abbruch des Laufs.

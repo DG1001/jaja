@@ -126,7 +126,7 @@ public final class Main {
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
                     o.containsKey("karte"), herkunft(baseUrl), maxDenken,
-                    o.containsKey("trace") ? Path.of(o.get("trace")) : null, kopf(o, ws));
+                    o.containsKey("trace") ? Path.of(o.get("trace")) : null, kopf(o, ws), o);
             return;
         }
 
@@ -141,8 +141,8 @@ public final class Main {
         de.dg1001.harness.agent.Protokoll protokoll = o.containsKey("trace")
                 ? de.dg1001.harness.agent.Protokoll.oeffne(Path.of(o.get("trace")), beob, kopf(o, ws))
                 : null;
-        Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
-                                ws, budget, maxZuege, protokoll != null ? protokoll : beob)
+        de.dg1001.harness.agent.Beobachter b = protokoll != null ? protokoll : beob;
+        Agent agent = new Agent(endpunkt, werkzeuge(o, endpunkt, budget, b), ws, budget, maxZuege, b)
                 .mitDenkgrenze(maxDenken)
                 // Im Stapelbetrieb fragt niemand -- aber Verbote gelten trotzdem.
                 .mitFreigabe(de.dg1001.harness.agent.Regeln.aus(ws.projekt()).nurVerbote());
@@ -175,7 +175,8 @@ public final class Main {
                                 int maxZuege, String modell, boolean fragen,
                                 Systemprompt.Ergebnis sp, boolean mitKarte,
                                 String herkunft, int maxDenken, Path trace,
-                                Map<String, Object> kopf) throws Exception {
+                                Map<String, Object> kopf, Map<String, String> schalter)
+            throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -190,8 +191,9 @@ public final class Main {
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
             de.dg1001.harness.agent.Protokoll protokoll = trace == null ? null
                     : de.dg1001.harness.agent.Protokoll.oeffne(trace, anzeige, kopf);
-            Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(mitKarte), ws, budget,
-                                    maxZuege, protokoll != null ? protokoll : anzeige)
+            de.dg1001.harness.agent.Beobachter b = protokoll != null ? protokoll : anzeige;
+            Agent agent = new Agent(endpunkt, werkzeuge(schalter, endpunkt, budget, b), ws, budget,
+                                    maxZuege, b)
                     .mitDenkgrenze(maxDenken);
             if (sp.quelle() != null)
                 anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
@@ -200,6 +202,18 @@ public final class Main {
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
                         ws, budget, sp.prompt(), modell, fragen, endpunkt, herkunft).lauf();
         }
+    }
+
+    /**
+     * Die Werkzeuge. Was spaeter dazukam, steht hinten -- jede Einfuegung weiter
+     * vorn verschoebe den Praefix-Cache aller folgenden Beschreibungen.
+     */
+    private static ToolRegistry werkzeuge(Map<String, String> o, ChatEndpunkt endpunkt,
+                                          ContextBudget budget, de.dg1001.harness.agent.Beobachter b) {
+        ToolRegistry r = ToolRegistry.vorgabe(o.containsKey("karte"));
+        if (o.containsKey("erkunden"))
+            r.fuegeHinzu(new de.dg1001.harness.agent.ErkundeTool(endpunkt, budget, b));
+        return r;
     }
 
     /**
@@ -301,6 +315,8 @@ public final class Main {
                                         Linux bwrap); fehlt das Werkzeug, Abbruch
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
+              --erkunden                Werkzeug 'erkunde': ein Unteragent beantwortet
+                                        Fragen zum Projekt in eigenem Kontext (Versuch)
               --karte                   das Werkzeug 'karte' dazunehmen (Vorgabe: aus,
                                         siehe README — ohne messbaren Nutzen)
               --index                   Kurzbeschreibungen fuer die Karte erzeugen
