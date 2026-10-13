@@ -21,6 +21,7 @@ public final class Workspace {
 
     private final Path wurzel;
     private final Path auslagerung;
+    private final Sicherung sicherung = new Sicherung();
 
     public Workspace(Path wurzel) throws IOException {
         this.wurzel = wurzel.toAbsolutePath().normalize().toRealPath();
@@ -30,6 +31,9 @@ public final class Workspace {
 
     public Path wurzel() { return wurzel; }
     public Path auslagerungsverzeichnis() { return auslagerung; }
+
+    /** Was write und edit vor dem Schreiben sichern, fuer /zurueck. */
+    public Sicherung sicherung() { return sicherung; }
 
     /**
      * Loest einen vom Modell gelieferten Pfad auf und stellt sicher, dass er

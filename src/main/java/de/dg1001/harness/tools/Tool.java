@@ -36,8 +36,18 @@ public interface Tool {
      * @param istFehler   getrennt vom Text, damit der Agent Fehlschlaege zaehlen
      *                    kann, ohne im Text zu suchen
      * @param ausgelagert Pfad der vollstaendigen Ausgabe, falls gekuerzt wurde
+     * @param anzeige     nur fuer Menschen, etwa die geaenderten Zeilen eines
+     *                    edit; geht nie ans Modell, oder null
      */
-    record ToolResult(String text, boolean istFehler, Path ausgelagert) {
+    record ToolResult(String text, boolean istFehler, Path ausgelagert, String anzeige) {
+
+        public ToolResult(String text, boolean istFehler, Path ausgelagert) {
+            this(text, istFehler, ausgelagert, null);
+        }
+
+        public ToolResult mitAnzeige(String a) {
+            return new ToolResult(text, istFehler, ausgelagert, a);
+        }
 
         public static ToolResult ok(String t) {
             return new ToolResult(t, false, null);

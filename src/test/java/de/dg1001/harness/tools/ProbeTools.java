@@ -296,6 +296,47 @@ public final class ProbeTools {
                lauf(r, ws, "write", "{\"pfad\":\"x.unbekannt\",\"inhalt\":\"def f(:\"}"),
                t -> !t.contains("Syntaxfehler"));
 
+        // ------------------------------------------- Sicherung und Diff
+        {
+            Path sw = Files.createTempDirectory("harness-sicherung");
+            Workspace w2 = new Workspace(sw);
+            Files.writeString(sw.resolve("alt.txt"), "eins\nzwei\ndrei\n");
+            lauf(r, w2, "edit", "{\"pfad\":\"alt.txt\",\"alt\":\"zwei\",\"neu\":\"ZWEI\"}");
+            pruefe("Sicherung: ohne begonnenen Stand wird nichts gesichert (Stapelbetrieb)",
+                   String.valueOf(w2.sicherung().anzahl()), t -> t.equals("0"));
+
+            w2.sicherung().neuerStand("erster Auftrag");
+            Tool.ToolResult er = r.fuehreAus(new ToolCall("i", "edit",
+                    "{\"pfad\":\"alt.txt\",\"alt\":\"ZWEI\",\"neu\":\"zwo\\nzwei-b\"}"), w2);
+            pruefe("Diff: edit zeigt entfernte und neue Zeilen mit Nummer",
+                   er.anzeige(), t -> t.contains("2 - ZWEI") && t.contains("2 + zwo")
+                                      && t.contains("3 + zwei-b") && !t.contains("eins"));
+            pruefe("Diff: geht nicht ans Modell", er.text(), t -> !t.contains("+ zwo"));
+            lauf(r, w2, "edit", "{\"pfad\":\"alt.txt\",\"alt\":\"drei\",\"neu\":\"DREI\"}");
+            lauf(r, w2, "write", "{\"pfad\":\"neu/datei.txt\",\"inhalt\":\"x\"}");
+            w2.sicherung().neuerStand("Auftrag ohne Aenderung");
+
+            var z = w2.sicherung().zurueck();
+            pruefe("zurueck: Stand vor dem Auftrag, nicht vor dem letzten edit",
+                   Files.readString(sw.resolve("alt.txt")), t -> t.equals("eins\nZWEI\ndrei\n"));
+            pruefe("zurueck: neu angelegte Datei wird entfernt",
+                   String.valueOf(Files.exists(sw.resolve("neu/datei.txt"))), t -> t.equals("false"));
+            pruefe("zurueck: Auftrag ohne Aenderung wird uebersprungen",
+                   z == null ? null : z.beschreibung(), t -> t.equals("erster Auftrag"));
+            pruefe("zurueck: danach ist nichts mehr da",
+                   String.valueOf(w2.sicherung().zurueck()), t -> t.equals("null"));
+
+            Files.writeString(sw.resolve("w.txt"), "a\nb\n");
+            w2.sicherung().neuerStand("ueberschreiben");
+            Tool.ToolResult wr = r.fuehreAus(new ToolCall("i", "write",
+                    "{\"pfad\":\"w.txt\",\"inhalt\":\"a\\nB\\n\"}"), w2);
+            pruefe("Diff: ueberschreibendes write zeigt die Aenderung",
+                   wr.anzeige(), t -> t.contains("2 - b") && t.contains("2 + B"));
+            w2.sicherung().zurueck();
+            pruefe("zurueck: ueberschriebene Datei hat wieder ihren Inhalt",
+                   Files.readString(sw.resolve("w.txt")), t -> t.equals("a\nb\n"));
+        }
+
         // -------------------------------------------------------------- glob
         pruefe("glob: findet nach Endung",
                lauf(r, ws, "glob", "{\"muster\":\"**/*.txt\"}"),

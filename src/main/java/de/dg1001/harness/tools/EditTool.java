@@ -106,6 +106,7 @@ public final class EditTool implements Tool {
             if (s.hinweis() != null)
                 hinweise.add((liste.size() == 1 ? "" : "Aenderung " + (k + 1) + ": ") + s.hinweis());
         }
+        ws.sicherung().vorAenderung(p);
         Files.writeString(p, stand);
 
         StringBuilder b = new StringBuilder("geaendert: ").append(ws.relativ(p)).append(" (");
@@ -116,7 +117,7 @@ public final class EditTool implements Tool {
         for (String h : hinweise) b.append('\n').append(h);
         String befund = Syntaxpruefung.befund(p, ws);
         if (befund != null) b.append('\n').append(befund);
-        return ToolResult.ok(b.toString());
+        return ToolResult.ok(b.toString()).mitAnzeige(Unterschied.zeige(inhalt, stand));
     }
 
     /** Ergebnis einer Ersetzung: neuer Inhalt oder Fehlertext. */

@@ -176,6 +176,14 @@ public final class Anzeige implements Beobachter {
         zeile("  " + farbe + "⏺" + Terminal.NORMAL + " " + Terminal.FETT + name
               + Terminal.NORMAL + "  " + arg
               + "  " + Terminal.GRAU + erg + Terminal.NORMAL);
+        // Was sich geaendert hat, nicht nur dass: "geaendert, 1 Stelle" sagt
+        // nicht, ob es die richtige war.
+        if (r.anzeige() != null)
+            for (String z : r.anzeige().split("\n")) {
+                String f = z.length() > 6 && z.charAt(6) == '-' ? Terminal.ROT
+                         : z.length() > 6 && z.charAt(6) == '+' ? Terminal.GRUEN : Terminal.GRAU;
+                zeile("    " + f + kuerze(z, Math.max(20, breite - 6)) + Terminal.NORMAL);
+            }
     }
 
     @Override public void hinweis(String text) {

@@ -57,6 +57,12 @@ public final class WriteTool implements Tool {
             return ToolResult.fehler(pfad + " ist ein Verzeichnis");
 
         boolean neu = !Files.exists(p);
+        String vorher = null;
+        if (!neu) {
+            try { vorher = Files.readString(p); }
+            catch (java.nio.charset.MalformedInputException e) { vorher = null; }
+        }
+        ws.sicherung().vorAenderung(p);
         Path eltern = p.getParent();
         if (eltern != null) Files.createDirectories(eltern);
         Files.writeString(p, inhalt);
@@ -68,6 +74,7 @@ public final class WriteTool implements Tool {
         String text = (neu ? "angelegt: " : "ueberschrieben: ") + ws.relativ(p)
                 + " (" + zeilen + " Zeilen, " + inhalt.length() + " Zeichen)";
         String befund = Syntaxpruefung.befund(p, ws);
-        return ToolResult.ok(befund == null ? text : text + "\n" + befund);
+        return ToolResult.ok(befund == null ? text : text + "\n" + befund)
+                .mitAnzeige(vorher == null ? null : Unterschied.zeige(vorher, inhalt));
     }
 }

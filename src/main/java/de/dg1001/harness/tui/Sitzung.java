@@ -67,6 +67,13 @@ public final class Sitzung {
     private volatile ToolCall offeneFrage;
     private final SynchronousQueue<Antwort> antwort = new SynchronousQueue<>();
 
+    /**
+     * Hinweis an das Modell, der dem naechsten Auftrag vorangestellt wird.
+     * Nach /zurueck stimmt sein Bild der Dateien nicht mehr -- ohne Hinweis
+     * arbeitete es an einem Stand weiter, den es nicht mehr gibt.
+     */
+    private String vorbemerkung = null;
+
     /** Was waehrend eines laufenden Zuges getippt wurde. */
     private final StringBuilder vorgetippt = new StringBuilder();
 
@@ -136,6 +143,8 @@ public final class Sitzung {
     // ------------------------------------------------------------- ein Auftrag
 
     private void beauftrage(String text, ExecutorService exec) throws IOException {
+        ws.sicherung().neuerStand(text);
+        if (vorbemerkung != null) { text = vorbemerkung + "\n\n" + text; vorbemerkung = null; }
         // Das Umgebungsbild auch hier, nicht nur im Stapelbetrieb: gemessen
         // halbierte es dort die Zuege bis zum ersten Schreiben (12 -> 6).
         if (verlauf.anzahl() == 0)
@@ -469,6 +478,8 @@ public final class Sitzung {
                 else uebergabe(exec);
             }
 
+            case "/zurueck", "/undo" -> zurueck();
+
             case "/zeige", "/lies" -> zeige(rest);
 
             case "/karte" -> karte(rest);
@@ -494,6 +505,7 @@ public final class Sitzung {
         String[] zeilen = {
             "/neu                 Verlauf verwerfen und neu anfangen",
             "/zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) sichern, frisch weiter",
+            "/zurueck             write/edit des letzten Auftrags zuruecknehmen (nicht bash)",
             "/speichern [n]       Sitzung nach .harness/sitzung-<n>.json schreiben",
             "/laden [n]           gespeicherte Sitzung zurueckholen",
             "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
@@ -571,6 +583,48 @@ public final class Sitzung {
                           + Terminal.NORMAL);
         }
         anzeige.leerzeile();
+    }
+
+    /**
+     * Nimmt zurueck, was write und edit im letzten Auftrag geaendert haben.
+     *
+     * <p>Sagt jedes Mal dazu, was es nicht kann: Aenderungen durch bash. Wer
+     * das vergisst und sich auf /zurueck verlaesst, nachdem das Modell per
+     * {@code sed -i} gearbeitet hat, verliert genau das, was er retten wollte.
+     */
+    private void zurueck() {
+        try {
+            var e = ws.sicherung().zurueck();
+            if (e == null) {
+                anzeige.zeile("  " + Terminal.GRAU + "nichts zurueckzunehmen" + Terminal.NORMAL);
+                return;
+            }
+            List<String> namen = new java.util.ArrayList<>();
+            for (Path p : e.wiederhergestellt()) namen.add(ws.relativ(p));
+            for (Path p : e.geloescht()) namen.add(ws.relativ(p) + " (entfernt)");
+            anzeige.zeile("  " + Terminal.GRUEN + "zurueckgenommen" + Terminal.NORMAL + " — "
+                    + String.join(", ", namen));
+            for (Path p : e.nichtMoeglich())
+                anzeige.zeile("  " + Terminal.ROT + "nicht gesichert (zu gross): " + ws.relativ(p)
+                              + Terminal.NORMAL);
+            anzeige.zeile("  " + Terminal.GRAU + "Auftrag: " + kuerze(e.beschreibung(), 60)
+                    + " · Aenderungen durch bash sind nicht erfasst"
+                    + (ws.sicherung().anzahl() > 0 ? " · /zurueck geht noch "
+                       + ws.sicherung().anzahl() + "x weiter" : "") + Terminal.NORMAL);
+            String hinweis = "[Hinweis des Harness: Der Nutzer hat die Aenderungen des letzten "
+                    + "Auftrags mit write/edit zurueckgenommen. Wieder im Stand davor: "
+                    + String.join(", ", namen) + ". Lies diese Dateien neu, bevor du dich auf "
+                    + "ihren Inhalt verlaesst.]";
+            vorbemerkung = vorbemerkung == null ? hinweis : vorbemerkung + "\n" + hinweis;
+        } catch (IOException | RuntimeException ex) {
+            anzeige.zeile("  " + Terminal.ROT + "zuruecknehmen fehlgeschlagen: " + ex.getMessage()
+                          + Terminal.NORMAL);
+        }
+    }
+
+    private static String kuerze(String s, int n) {
+        s = s.replace('\n', ' ');
+        return s.length() > n ? s.substring(0, n) + "…" : s;
     }
 
     /** Zeigt eine Datei aus dem Arbeitsbereich; Markdown wird gesetzt. */
