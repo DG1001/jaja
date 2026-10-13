@@ -5,6 +5,7 @@ import de.dg1001.harness.ws.Workspace;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -32,7 +33,8 @@ public final class BashTool implements Tool {
     @Override public String beschreibung() {
         return "Fuehrt ein Shell-Kommando im Projektverzeichnis aus und liefert die "
              + "zusammengelegte Ausgabe samt Rueckgabewert. Nimm das zum Bauen, Testen, "
-             + "Suchen und fuer alles, wofuer es kein eigenes Werkzeug gibt.";
+             + "Suchen und fuer alles, wofuer es kein eigenes Werkzeug gibt. Server und "
+             + "andere Dauerlaeufer mit hintergrund=true starten, nicht mit &.";
     }
 
     @Override public String parameterSchema() {
@@ -40,7 +42,8 @@ public final class BashTool implements Tool {
                {"type":"object",
                 "properties":{
                   "kommando":{"type":"string","description":"Shell-Kommando"},
-                  "sekunden":{"type":"integer","description":"Zeitgrenze, Vorgabe 120, hoechstens 600"}},
+                  "sekunden":{"type":"integer","description":"Zeitgrenze, Vorgabe 120, hoechstens 600"},
+                  "hintergrund":{"type":"boolean","description":"sofort zurueck, Ausgabe laufend in eine Logdatei"}},
                 "required":["kommando"]}""";
     }
 
@@ -55,6 +58,7 @@ public final class BashTool implements Tool {
 
         int sekunden = Math.min(MAX_SEKUNDEN,
                 Math.max(1, Tool.zahl(args, "sekunden", VORGABE_SEKUNDEN)));
+        if (args.get("hintergrund") instanceof Boolean h && h) return hintergrund(kommando, ws);
 
         ProcessBuilder pb = new ProcessBuilder("bash", "-lc", kommando);
         pb.directory(ws.wurzel().toFile());
@@ -120,6 +124,94 @@ public final class BashTool implements Tool {
         b.append("[Rueckgabewert ").append(code).append(", ").append(ms).append(" ms]");
 
         return Spill.vielleichtAuslagern(b.toString(), ws, "bash", code != 0);
+    }
+
+    // ----------------------------------------------------------- Hintergrund
+
+    /** Wie lange ein Hintergrundauftrag beobachtet wird, bevor der Aufruf zurueckkehrt. */
+    static long ANLAUF_MS = 3_000;
+
+    static final int MAX_HINTERGRUND = 5;
+
+    private record Auftrag(Process prozess, String kommando, java.nio.file.Path log) {}
+
+    private static final java.util.List<Auftrag> LAUFEND =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private static final java.util.concurrent.atomic.AtomicLong NUMMER =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    static {
+        // Was im Hintergrund laeuft, endet mit dem Harness -- samt Kindern.
+        // Der Anlass: ein Flask-Server, der nach einer Zeitgrenze als Waise
+        // zweieinhalb Stunden Port 5000 hielt (siehe README).
+        Runtime.getRuntime().addShutdownHook(new Thread(BashTool::beendeHintergrund));
+    }
+
+    /**
+     * Startet einen Dauerlaeufer: Server, Watcher, alles, was nicht von selbst
+     * endet.
+     *
+     * <p>Ohne das gibt es fuer einen Server nur zwei schlechte Wege. Im
+     * Vordergrund laeuft er in die Zeitgrenze und wird abgewuergt. Mit
+     * {@code &} kehrt die Shell zurueck, der Server haelt aber die Ausgabe
+     * offen -- der Leser wartet dann bis zum Ende seiner Frist, und der Server
+     * ueberlebt als Waise, die niemand mehr beendet.
+     *
+     * <p>Hier geht die Ausgabe in eine Datei, die das Modell mit read oder
+     * {@code tail} lesen kann, und der Aufruf kehrt nach {@link #ANLAUF_MS}
+     * zurueck -- mit dem, was bis dahin ausgegeben wurde. Endet das Kommando
+     * schon vorher, ist es ein gewoehnliches Ergebnis.
+     */
+    private static ToolResult hintergrund(String kommando, Workspace ws) throws IOException {
+        synchronized (LAUFEND) {
+            LAUFEND.removeIf(a -> !a.prozess().isAlive());
+            if (LAUFEND.size() >= MAX_HINTERGRUND)
+                return ToolResult.fehler("Schon " + MAX_HINTERGRUND + " Auftraege im Hintergrund: "
+                        + String.join("; ", LAUFEND.stream()
+                                .map(a -> "PID " + a.prozess().pid() + " " + a.kommando()).toList())
+                        + ". Erst einen beenden.");
+        }
+        java.nio.file.Path dir = ws.wurzel().resolve(".harness/hintergrund");
+        java.nio.file.Files.createDirectories(dir);
+        java.nio.file.Path log = dir.resolve("auftrag-" + NUMMER.incrementAndGet() + ".log");
+
+        ProcessBuilder pb = new ProcessBuilder("bash", "-lc", kommando);
+        pb.directory(ws.wurzel().toFile());
+        pb.redirectErrorStream(true);
+        pb.redirectOutput(log.toFile());
+        pb.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")));
+        pb.environment().put("HARNESS_ROOT", ws.wurzel().toString());
+        Process p = pb.start();
+
+        boolean beendet;
+        try {
+            beendet = p.waitFor(ANLAUF_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            beende(p);
+            return ToolResult.fehler("unterbrochen");
+        }
+        String bisher = java.nio.file.Files.readString(log, StandardCharsets.UTF_8);
+        if (bisher.length() > 3_000) bisher = "[…]\n" + bisher.substring(bisher.length() - 3_000);
+
+        if (beendet) {
+            String t = (bisher.isBlank() ? "(keine Ausgabe)\n" : bisher + (bisher.endsWith("\n") ? "" : "\n"))
+                     + "[Rueckgabewert " + p.exitValue() + ", vor Ablauf von "
+                     + ANLAUF_MS / 1000 + " s beendet -- lief nicht im Hintergrund weiter]";
+            return new ToolResult(t, p.exitValue() != 0, null);
+        }
+        LAUFEND.add(new Auftrag(p, kommando, log));
+        return ToolResult.ok("laeuft im Hintergrund, PID " + p.pid() + ". Ausgabe laufend in "
+                + ws.relativ(log) + " (mit read oder tail nachsehen). Beenden: pkill -P "
+                + p.pid() + "; kill " + p.pid() + ". Endet spaetestens mit dem Harness.\n"
+                + "Bisherige Ausgabe:\n" + (bisher.isBlank() ? "(noch keine)" : bisher));
+    }
+
+    /** Beendet alle Hintergrundauftraege samt ihren Kindern. */
+    static void beendeHintergrund() {
+        List<Auftrag> alle;
+        synchronized (LAUFEND) { alle = new java.util.ArrayList<>(LAUFEND); LAUFEND.clear(); }
+        for (Auftrag a : alle) if (a.prozess().isAlive()) beende(a.prozess());
     }
 
     /**

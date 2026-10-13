@@ -5,6 +5,7 @@ import de.dg1001.harness.ws.Workspace;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /** Prueft Registry, ReadTool, BashTool, Auslagerung und Pfadeingrenzung. */
 public final class ProbeTools {
@@ -335,6 +336,32 @@ public final class ProbeTools {
             w2.sicherung().zurueck();
             pruefe("zurueck: ueberschriebene Datei hat wieder ihren Inhalt",
                    Files.readString(sw.resolve("w.txt")), t -> t.equals("a\nb\n"));
+        }
+
+        // ------------------------------------------------ Hintergrund
+        {
+            BashTool.ANLAUF_MS = 800;
+            long t0 = System.nanoTime();
+            String h = lauf(r, ws, "bash", "{\"kommando\":\"echo gestartet; sleep 30 & wait\",\"hintergrund\":true}");
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            pruefe("hintergrund: kehrt nach dem Anlauf zurueck, mit PID und Log",
+                   h, t -> ms < 3_000 && t.contains("laeuft im Hintergrund, PID")
+                           && t.contains(".harness/hintergrund/") && t.contains("gestartet"));
+            long pid = Long.parseLong(h.replaceAll("(?s).*PID (\\d+).*", "$1"));
+            var kinder = ProcessHandle.of(pid).map(x -> x.descendants().toList()).orElse(List.of());
+            pruefe("hintergrund: laeuft tatsaechlich weiter",
+                   String.valueOf(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)),
+                   t -> t.equals("true"));
+            BashTool.beendeHintergrund();
+            Thread.sleep(300);
+            pruefe("hintergrund: beim Ende des Harness samt Kindern beendet",
+                   String.valueOf(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)
+                                  || kinder.stream().anyMatch(ProcessHandle::isAlive)),
+                   t -> t.equals("false"));
+            pruefe("hintergrund: kurzes Kommando ist ein gewoehnliches Ergebnis",
+                   lauf(r, ws, "bash", "{\"kommando\":\"echo kurz\",\"hintergrund\":true}"),
+                   t -> t.contains("kurz") && t.contains("Rueckgabewert 0")
+                        && t.contains("lief nicht im Hintergrund weiter"));
         }
 
         // -------------------------------------------------------------- glob
