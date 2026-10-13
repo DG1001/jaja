@@ -164,10 +164,16 @@ public final class Sitzung {
             erg = f.get();
         } catch (Exception ex) {
             anzeige.statusBeenden();
+            ws.sicherung().standAbschliessen();
             anzeige.zeile("  " + Terminal.ROT + "abgestuerzt: " + ex.getCause() + Terminal.NORMAL);
             return;
         }
         anzeige.statusBeenden();
+        // Der Stand, den der Agent hinterlassen hat -- was danach von Hand
+        // geaendert wird, nimmt /zurueck nicht mit zurueck.
+        ws.sicherung().standAbschliessen();
+        String w = ws.sicherung().warnung();
+        if (w != null) anzeige.hinweis(w);
 
         anzeige.leerzeile();
         if (erg.abschluss() != null && !erg.abschluss().isBlank())
@@ -506,7 +512,7 @@ public final class Sitzung {
         String[] zeilen = {
             "/neu                 Verlauf verwerfen und neu anfangen",
             "/zusammenfassen [d]  Stand nach NOTIZEN.md (oder d) sichern, frisch weiter",
-            "/zurueck             write/edit des letzten Auftrags zuruecknehmen (nicht bash)",
+            "/zurueck             Aenderungen des letzten Auftrags zuruecknehmen",
             "/speichern [n]       Sitzung nach .harness/sitzung-<n>.json schreiben",
             "/laden [n]           gespeicherte Sitzung zurueckholen",
             "/zeige [d]           Datei anzeigen, Markdown gesetzt (Vorgabe NOTIZEN.md)",
@@ -608,12 +614,16 @@ public final class Sitzung {
             for (Path p : e.nichtMoeglich())
                 anzeige.zeile("  " + Terminal.ROT + "nicht gesichert (zu gross): " + ws.relativ(p)
                               + Terminal.NORMAL);
+            for (Path p : e.vonHand())
+                anzeige.zeile("  " + Terminal.GELB + "nach dem Auftrag noch einmal geaendert, "
+                              + "nicht angefasst: " + ws.relativ(p) + Terminal.NORMAL);
             anzeige.zeile("  " + Terminal.GRAU + "Auftrag: " + kuerze(e.beschreibung(), 60)
-                    + " · Aenderungen durch bash sind nicht erfasst"
+                    + (e.mitBash() ? " · auch Aenderungen durch bash"
+                                   : " · Aenderungen durch bash sind nicht erfasst (kein git)")
                     + (ws.sicherung().anzahl() > 0 ? " · /zurueck geht noch "
                        + ws.sicherung().anzahl() + "x weiter" : "") + Terminal.NORMAL);
             String hinweis = "[Hinweis des Harness: Der Nutzer hat die Aenderungen des letzten "
-                    + "Auftrags mit write/edit zurueckgenommen. Wieder im Stand davor: "
+                    + "Auftrags zurueckgenommen. Wieder im Stand davor: "
                     + String.join(", ", namen) + ". Lies diese Dateien neu, bevor du dich auf "
                     + "ihren Inhalt verlaesst.]";
             vorbemerkung = vorbemerkung == null ? hinweis : vorbemerkung + "\n" + hinweis;

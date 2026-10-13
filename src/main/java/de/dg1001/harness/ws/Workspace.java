@@ -21,14 +21,20 @@ public final class Workspace {
 
     private final Path wurzel;
     private final Path auslagerung;
-    private final Sicherung sicherung = new Sicherung();
+    private final Sicherung sicherung;
     private volatile Sandkasten sandkasten;
     private volatile Projekt projekt;
 
     public Workspace(Path wurzel) throws IOException {
         this.wurzel = wurzel.toAbsolutePath().normalize().toRealPath();
         this.auslagerung = this.wurzel.resolve(".harness/spill");
+        this.sicherung = new Sicherung(this.wurzel);
         Files.createDirectories(this.auslagerung);
+        // .harness ist Laufzeitzustand, kein Projektinhalt. Ohne das stuende
+        // es nach dem ersten Lauf in jedem "git status" des Projekts -- mit
+        // dem Schatten-Repo fuer /zurueck darin erst recht.
+        Path ignorieren = this.wurzel.resolve(".harness/.gitignore");
+        if (!Files.exists(ignorieren)) Files.writeString(ignorieren, "*\n");
     }
 
     public Path wurzel() { return wurzel; }

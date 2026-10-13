@@ -338,6 +338,37 @@ public final class ProbeTools {
                    Files.readString(sw.resolve("w.txt")), t -> t.equals("a\nb\n"));
         }
 
+        // ---------------------------------- zurueck mit Schnappschuessen
+        if (new ProcessBuilder("git", "--version").start().waitFor() == 0) {
+            Path gw = Files.createTempDirectory("harness-schnapp");
+            Workspace w3 = new Workspace(gw);
+            // Ein Projekt-git, das von alldem nichts merken darf.
+            sh(gw, "git init -q && git config user.email p@p && git config user.name p"
+                   + " && printf 'node_modules/\n' > .gitignore && echo alt > alt.txt"
+                   + " && echo bleibt > hand.txt && git add -A && git commit -qm start");
+            String kopf = sh(gw, "git rev-parse HEAD; git status --porcelain");
+
+            w3.sicherung().neuerStand("mit bash");
+            lauf(r, w3, "bash", "{\"kommando\":\"echo neu > neu.txt; rm alt.txt; echo x >> hand.txt\"}");
+            lauf(r, w3, "write", "{\"pfad\":\"node_modules/paket.js\",\"inhalt\":\"x\"}");
+            w3.sicherung().standAbschliessen();
+            Files.writeString(gw.resolve("hand.txt"), "von Hand\n");     // nach dem Auftrag
+
+            var z = w3.sicherung().zurueck();
+            pruefe("zurueck: auch was bash geaendert hat",
+                   String.valueOf(z != null && z.mitBash() && !Files.exists(gw.resolve("neu.txt"))
+                                  && Files.exists(gw.resolve("alt.txt"))), t -> t.equals("true"));
+            pruefe("zurueck: von Hand Geaendertes bleibt und wird genannt",
+                   Files.readString(gw.resolve("hand.txt"))
+                   + (z != null && z.vonHand().contains(w3.wurzel().resolve("hand.txt"))),
+                   t -> t.equals("von Hand\ntrue"));
+            pruefe("zurueck: was git ignoriert, kommt aus dem Speicher",
+                   String.valueOf(Files.exists(gw.resolve("node_modules/paket.js"))), t -> t.equals("false"));
+            pruefe("zurueck: das git des Projekts merkt nichts",
+                   sh(gw, "git rev-parse HEAD; git status --porcelain"),
+                   t -> t.replace(" M hand.txt\n", "").equals(kopf) && !t.contains(".harness"));
+        }
+
         // ------------------------------------------------ Hintergrund
         {
             BashTool.ANLAUF_MS = 800;
@@ -464,6 +495,14 @@ public final class ProbeTools {
         pruefe("die Datei wurde nicht angelegt",
                String.valueOf(java.nio.file.Files.exists(ws.wurzel().resolve("x.html"))),
                "false"::equals);
+    }
+
+    private static String sh(Path dir, String kommando) throws Exception {
+        Process p = new ProcessBuilder("bash", "-c", kommando).directory(dir.toFile())
+                .redirectErrorStream(true).start();
+        String aus = new String(p.getInputStream().readAllBytes());
+        p.waitFor();
+        return aus;
     }
 
     private static String lauf(ToolRegistry r, Workspace ws, String werkzeug, String args) {

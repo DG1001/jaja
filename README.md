@@ -273,13 +273,25 @@ copying still works.
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
-| `/zurueck` | undo what `write` and `edit` changed in the last request (not `bash`) |
+| `/zurueck` | undo what the last request changed — including `bash`, when git is installed |
 | `/verlauf` | transcript size and current token estimate |
 
 The header names the endpoint, not just the model: `lokal :8888` in green,
 `api.deepseek.com` in yellow. Both were showing `deepseek-v4-flash` and were
 byte-identical, because the local server answers to the same model id as the
 hosted one — and one of the two bills.
+
+`/zurueck` takes a snapshot of the whole workspace at the start and end of
+each request — `git write-tree` into a shadow repository under
+`.harness/snap`, invisible to the project's own git: no commit, no stash, no
+reflog entry. So a `sed -i`, a generator or an `rm` is undone too, which the
+first version, tracking only `write` and `edit`, could not do. Files that were
+changed again **after** the request — by you, presumably — are left alone and
+named; undo must never be the thing that destroys the human's work. What git
+ignores (`node_modules`, `.venv`, build output) falls back to the in-memory
+copy that `write` and `edit` keep, and without git that copy is all there is.
+`.harness/` now carries its own `.gitignore`, so none of this shows up in
+`git status`.
 
 Under every `edit` the session shows the changed lines in red and green; the
 model never sees them, so they cost nothing. While a turn streams, the status
