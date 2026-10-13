@@ -410,6 +410,54 @@ public final class ProbeSchleife {
                    a.eingabeTokens() == 400 && a.ausgabeTokens() == 40);
         }
 
+        // ------------------------------------------------ Best-of-N
+        {
+            Path pv = Files.createTempDirectory("jaja-versuche-probe");
+            Files.writeString(pv.resolve(".jaja.json"),
+                    "{\"test\": \"python3 -c 'import loesung; assert loesung.f() == 2' && echo '1 passed'\"}");
+            Files.createDirectories(pv.resolve(".venv/bin"));
+            Files.writeString(pv.resolve(".venv/bin/marke"), "bleibt");
+            Files.writeString(pv.resolve("vorher.txt"), "unveraendert\n");
+            ChatEndpunkt je = (verlauf, w) -> {
+                String alles = verlauf.toString();
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("/v(\\d+)").matcher(alles);
+                int k = m.find() ? Integer.parseInt(m.group(1)) : 0;
+                if (!alles.contains("ToolMessage"))
+                    return ruft("write", "{\"pfad\":\"loesung.py\",\"inhalt\":\"def f():\\n    return " + k + "\\n\"}");
+                return text("fertig " + k, FinishReason.STOP);
+            };
+            var ws = new Workspace(pv);
+            var aus = Versuche.lauf(ws, 3, "sys", "Schreib f.", (w, k) ->
+                    new Agent(je, ToolRegistry.vorgabe(), w, ContextBudget.vorgabe(65536, 16384), 10, false),
+                    m -> {});
+            pruefe("Versuche: der mit gruenen Tests gewinnt",
+                   aus.sieger().nummer() == 2 && Boolean.TRUE.equals(aus.sieger().testsGruen())
+                   && aus.sieger().bestanden() == 1);
+            pruefe("Versuche: nur seine Aenderung kommt zurueck",
+                   Files.readString(pv.resolve("loesung.py")).contains("return 2")
+                   && aus.geaendert().equals(List.of("loesung.py")));
+            pruefe("Versuche: Unveraendertes bleibt, die echte .venv ueberlebt das Aufraeumen",
+                   Files.readString(pv.resolve("vorher.txt")).equals("unveraendert\n")
+                   && Files.readString(pv.resolve(".venv/bin/marke")).equals("bleibt"));
+            pruefe("Versuche: alle drei sind gelaufen",
+                   aus.alle().size() == 3 && aus.alle().stream().allMatch(v -> v.ergebnis().erfolgreich()));
+        }
+        {
+            // Zurueckspielen: neu, geaendert, geloescht -- und .git bleibt, wie es ist.
+            Path sieger = Files.createTempDirectory("jaja-sieger"), ziel = Files.createTempDirectory("jaja-ziel");
+            Files.writeString(sieger.resolve("neu.txt"), "n");
+            Files.writeString(sieger.resolve("geaendert.txt"), "neu");
+            Files.writeString(ziel.resolve("geaendert.txt"), "alt");
+            Files.writeString(ziel.resolve("weg.txt"), "w");
+            Files.createDirectories(ziel.resolve(".git"));
+            Files.writeString(ziel.resolve(".git/HEAD"), "ref");
+            var g = Versuche.spieleZurueck(sieger, ziel);
+            pruefe("Zurueckspielen: neu, geaendert, geloescht; .git unberuehrt",
+                   g.equals(List.of("geaendert.txt", "neu.txt", "weg.txt"))
+                   && Files.readString(ziel.resolve("geaendert.txt")).equals("neu")
+                   && !Files.exists(ziel.resolve("weg.txt")) && Files.exists(ziel.resolve(".git/HEAD")));
+        }
+
         // ----------------------------------------------------- Abbruch
         // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
         // lokal dauert ein Zug Minuten.

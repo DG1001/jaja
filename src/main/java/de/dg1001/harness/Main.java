@@ -141,6 +141,13 @@ public final class Main {
         de.dg1001.harness.agent.Protokoll protokoll = o.containsKey("trace")
                 ? de.dg1001.harness.agent.Protokoll.oeffne(Path.of(o.get("trace")), beob, kopf(o, ws))
                 : null;
+        int versuche = Integer.parseInt(o.getOrDefault("versuche", "1"));
+        if (versuche > 1) {
+            versuche(o, ws, versuche, sp.prompt(), aufgabe, endpunkt, budget, maxZuege, maxDenken,
+                     laut, protokoll);
+            return;
+        }
+
         de.dg1001.harness.agent.Beobachter b = protokoll != null ? protokoll : beob;
         Agent agent = new Agent(endpunkt, werkzeuge(o, endpunkt, budget, b), ws, budget, maxZuege, b)
                 .mitDenkgrenze(maxDenken)
@@ -202,6 +209,56 @@ public final class Main {
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
                         ws, budget, sp.prompt(), modell, fragen, endpunkt, herkunft).lauf();
         }
+    }
+
+    /**
+     * Mehrere Versuche nebeneinander, die Tests entscheiden (siehe
+     * {@link de.dg1001.harness.agent.Versuche}). Jeder Versuch schreibt sein
+     * eigenes Protokoll neben das Hauptprotokoll; dieses bekommt die Summen
+     * ALLER Versuche, denn die kostet die Konfiguration.
+     */
+    private static void versuche(Map<String, String> o, Workspace ws, int n, String systemPrompt,
+                                 String aufgabe, ChatEndpunkt endpunkt, ContextBudget budget,
+                                 int maxZuege, int maxDenken, boolean laut,
+                                 de.dg1001.harness.agent.Protokoll protokoll) throws Exception {
+        var protokolle = new java.util.concurrent.CopyOnWriteArrayList<de.dg1001.harness.agent.Protokoll>();
+        long t0 = System.nanoTime();
+        var aus = de.dg1001.harness.agent.Versuche.lauf(ws, n, systemPrompt, aufgabe, (w, k) -> {
+            de.dg1001.harness.agent.Beobachter b = de.dg1001.harness.agent.Versuche.mitNummer(k, laut);
+            if (o.containsKey("trace")) {
+                try {
+                    var p = de.dg1001.harness.agent.Protokoll.oeffne(
+                            Path.of(o.get("trace") + ".versuch-" + k + ".jsonl"), b, kopf(o, w));
+                    protokolle.add(p);
+                    b = p;
+                } catch (java.io.IOException e) {
+                    System.err.println("[harness] Protokoll fuer Versuch " + k + ": " + e.getMessage());
+                }
+            }
+            return new Agent(endpunkt, werkzeuge(o, endpunkt, budget, b), w, budget, maxZuege, b)
+                    .mitDenkgrenze(maxDenken)
+                    .mitFreigabe(de.dg1001.harness.agent.Regeln.aus(ws.projekt()).nurVerbote());
+        }, m -> { if (laut) System.err.println("[harness] " + m); });
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        for (var p : protokolle) p.close();
+
+        long ein = aus.alle().stream().mapToLong(v -> v.eingabe()).sum();
+        long ausg = aus.alle().stream().mapToLong(v -> v.ausgabe()).sum();
+        var s = aus.sieger();
+        String warum = Boolean.TRUE.equals(s.testsGruen()) ? "Tests gruen"
+                : aus.test() == null ? "kein Testbefehl erkennbar -- nach Status und Token gewaehlt"
+                : "kein Versuch mit gruenen Tests -- nach Status und Token gewaehlt";
+        System.err.printf("[harness] Sieger: Versuch %d von %d (%s), %d Datei(en) uebernommen%n",
+                s.nummer(), n, warum, aus.geaendert().size());
+        System.err.printf("[harness] %s nach %d s; Token aller Versuche: %d Eingabe, %d Ausgabe%n",
+                s.ergebnis().status(), ms / 1000, ein, ausg);
+        if (protokoll != null) {
+            protokoll.hinweis("Sieger: Versuch " + s.nummer() + " von " + n + " (" + warum + ")");
+            protokoll.laufEnde(s.ergebnis(), ein, ausg, ms);
+            protokoll.close();
+        }
+        if (s.ergebnis().abschluss() != null) System.out.println(s.ergebnis().abschluss());
+        System.exit(s.ergebnis().erfolgreich() ? 0 : 1);
     }
 
     /**
@@ -315,6 +372,8 @@ public final class Main {
                                         Linux bwrap); fehlt das Werkzeug, Abbruch
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
+              --versuche <n>            n Versuche nebeneinander, der mit gruenen Tests
+                                        gewinnt; nur Stapelbetrieb (Versuch)
               --erkunden                Werkzeug 'erkunde': ein Unteragent beantwortet
                                         Fragen zum Projekt in eigenem Kontext (Versuch)
               --karte                   das Werkzeug 'karte' dazunehmen (Vorgabe: aus,

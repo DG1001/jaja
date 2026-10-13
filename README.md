@@ -120,6 +120,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
 | `--erkunden` | off | add `erkunde`: a read-only sub-agent answers questions in its own context (experiment) |
+| `--versuche <n>` | 1 | batch: n attempts side by side, the one with green tests wins (experiment) |
 | `--index` | — | write descriptions into the map, then exit |
 | `--muster <glob>` | — | with `--index`: describe only that part |
 
@@ -1035,6 +1036,19 @@ pays shows in input tokens — and those include the sub-agent's own, or a
 configuration using it would look cheaper than it is. Off until a benchmark
 says otherwise.
 
+**Best-of-N, because locally the second attempt is nearly free:
+`--versuche <n>`.** Hosted, a second attempt is a second bill. Locally,
+decoding is bound by memory bandwidth, not compute, and a server that batches
+sequences (vLLM; llama.cpp with `--parallel`) produces three answers in little
+more time than one — the price is KV-cache memory, and in llama.cpp the slots
+share the context window. Each attempt works on its own copy of the workspace
+(`.venv`, `venv` and `node_modules` linked, not copied — a venv is not
+relocatable); afterwards the project's test command runs in each copy, and the
+winner is: green tests, then `FERTIG`, then more passed tests, then fewer
+input tokens. Only the winner's changes come back; the copies' `.git` does
+not. The trace carries the tokens of **all** attempts, because that is what
+the configuration costs. Batch only, and off until measured.
+
 **Large tool output is spilled to a file.** Output over 8,000 characters is
 cut to head + tail with the full text written to `.harness/spill/`, and the
 model is told the path. It can then grep the file instead of losing the turn.
@@ -1228,6 +1242,7 @@ headline numbers above predate them.
 | streaming | wall clock, and the same results with `--kein-stream` |
 | `--max-denken` | where a cut-off saves more than it loses — default off until then |
 | `--erkunden` | input tokens per run, including the sub-agent's own |
+| `--versuche 3` | pass rate and wall clock against tokens of all attempts; server batching (`--parallel` in llama.cpp) |
 
 ## A note on the German
 
