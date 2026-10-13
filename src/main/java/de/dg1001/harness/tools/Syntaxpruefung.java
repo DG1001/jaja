@@ -51,8 +51,51 @@ final class Syntaxpruefung {
                 sys.exit(1)
             """;
 
-    /** @return Befund fuer das Modell, oder {@code null}, wenn nichts auffiel. */
+    /** Frist fuer den Pruefbefehl des Projekts -- ein Typpruefer braucht laenger als ast. */
+    static long PROJEKT_FRIST_MS = 60_000;
+
+    /**
+     * Syntax, und wenn die stimmt, der Pruefbefehl des Projekts.
+     *
+     * @return Befund fuer das Modell, oder {@code null}, wenn nichts auffiel
+     */
     static String befund(Path datei, Workspace ws) {
+        String syntax = syntax(datei, ws);
+        // Bei einem Syntaxfehler meldet der Linter dasselbe noch einmal, nur
+        // laenger. Erst die Syntax in Ordnung bringen.
+        return syntax != null ? syntax : projekt(datei, ws);
+    }
+
+    /**
+     * Der Befehl aus {@code .jaja.json} unter {@code pruefen}, dessen Muster
+     * auf die Datei passt; {@code {datei}} wird durch ihren Pfad ersetzt.
+     *
+     * <p>Das ist, was opencode mit LSP-Diagnosen und Claude Code mit Hooks
+     * macht, in der Form, die ohne Abhaengigkeit auskommt: der Linter oder
+     * Typpruefer, den das Projekt ohnehin hat. {@code from typing import dict}
+     * ist syntaktisch einwandfrei -- ein {@code ruff check} oder
+     * {@code python -c 'import modul'} findet es sofort, nicht erst beim
+     * Testlauf, falls es einen gibt.
+     *
+     * <p>Laeuft ueber dieselbe Shell wie bash, also auch im Sandkasten.
+     */
+    static String projekt(Path datei, Workspace ws) {
+        try {
+            String rel = ws.relativ(datei);
+            for (var e : ws.projekt().pruefen().entrySet()) {
+                if (!GlobTool.passt(GlobTool.muster(e.getKey()), Path.of(rel))) continue;
+                String befehl = e.getValue().replace("{datei}", "'" + rel.replace("'", "'\\''") + "'");
+                String aus = aufrufMitFrist(ws, PROJEKT_FRIST_MS, BashTool.shell(befehl, ws));
+                if (aus == null || aus.isBlank()) return null;
+                return "Pruefung (" + e.getValue() + ") meldet:\n" + kuerze(aus.strip(), ws, 20);
+            }
+        } catch (RuntimeException ignoriert) {
+            // Ein kaputtes Muster soll das write nicht scheitern lassen.
+        }
+        return null;
+    }
+
+    private static String syntax(Path datei, Workspace ws) {
         try {
             String name = datei.getFileName().toString().toLowerCase();
             String fehler;
@@ -63,7 +106,7 @@ final class Syntaxpruefung {
             else if (name.endsWith(".sh") || name.endsWith(".bash")) fehler = aufruf(ws, "bash", "-n", datei.toString());
             else return null;
             if (fehler == null || fehler.isBlank()) return null;
-            return "Syntaxfehler in " + ws.relativ(datei) + ":\n" + kuerze(fehler.strip(), ws);
+            return "Syntaxfehler in " + ws.relativ(datei) + ":\n" + kuerze(fehler.strip(), ws, 8);
         } catch (RuntimeException e) {
             return null;
         }
@@ -93,6 +136,10 @@ final class Syntaxpruefung {
      * Syntaxfehler der Datei.
      */
     private static String aufruf(Workspace ws, String... befehl) {
+        return aufrufMitFrist(ws, FRIST_MS, List.of(befehl));
+    }
+
+    private static String aufrufMitFrist(Workspace ws, long fristMs, List<String> befehl) {
         Process p;
         try {
             ProcessBuilder pb = new ProcessBuilder(befehl);
@@ -112,7 +159,7 @@ final class Syntaxpruefung {
                     aus.complete("");
                 }
             });
-            if (!p.waitFor(FRIST_MS, TimeUnit.MILLISECONDS)) return null;
+            if (!p.waitFor(fristMs, TimeUnit.MILLISECONDS)) return null;
             if (p.exitValue() == 0) return null;
             return aus.get(500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
@@ -124,16 +171,17 @@ final class Syntaxpruefung {
     }
 
     /**
-     * Hoechstens acht Zeilen, absolute Pfade der Wurzel herausgenommen. Leere
+     * Hoechstens {@code max} Zeilen, absolute Pfade der Wurzel herausgenommen. Leere
      * Zeilen und Stapelrahmen des Pruefers ({@code at wrapSafe (node:...)})
      * sagen nichts ueber die Datei und fallen weg.
      */
-    private static String kuerze(String s, Workspace ws) {
+    private static String kuerze(String s, Workspace ws, int max) {
         s = s.replace(ws.wurzel() + "/", "");
-        List<String> z = s.lines()
+        List<String> alle = s.lines()
                 .filter(l -> !l.isBlank())
                 .filter(l -> !l.strip().startsWith("at ") && !l.startsWith("Node.js v"))
-                .limit(8).toList();
-        return String.join("\n", z);
+                .toList();
+        String text = String.join("\n", alle.subList(0, Math.min(max, alle.size())));
+        return alle.size() > max ? text + "\n[… " + (alle.size() - max) + " weitere Zeilen]" : text;
     }
 }

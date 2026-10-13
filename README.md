@@ -763,6 +763,23 @@ a turn; none costs nothing. The command appears in the environment snapshot
 directory it is detected again at nudge time, because there the tests only
 come into existence during the run.
 
+### Checks after every change: `pruefen`
+
+`pruefen` maps file patterns to a command that runs after every successful
+`write` or `edit` of a matching file, with `{datei}` replaced by its quoted
+path — `ruff check {datei}`, `npx tsc --noEmit`, `python3 -c 'import paket'`.
+If it exits non-zero, its output (up to twenty lines) is appended to the tool
+result; if it passes, nothing is added and nothing is spent. On a syntax
+error only the syntax finding is shown, since the linter would say the same
+thing at greater length. It runs through the same shell as `bash`, so inside
+the sandbox when there is one, with a 60-second limit.
+
+This is what opencode gets from LSP diagnostics and Claude Code from hooks,
+in the form that needs no dependency: whatever checker the project already
+has. `from typing import dict` is perfectly valid syntax — the import fails
+only at runtime, which in the run that motivated all this meant every test,
+including the model's own.
+
 ### Approval rules: `erlauben` and `verbieten`
 
 Before, there were two states: every `ls` asks, or `/frei` turns asking off —

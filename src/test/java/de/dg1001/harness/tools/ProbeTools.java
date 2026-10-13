@@ -428,6 +428,32 @@ public final class ProbeTools {
                    t -> !t.contains("Rueckgabewert 0") && !Files.exists(aussen.resolve("x")));
         }
 
+        // ------------------------------------- Pruefbefehl des Projekts
+        {
+            Path pw = Files.createTempDirectory("harness-pruefen");
+            Files.writeString(pw.resolve(".jaja.json"),
+                    "{\"pruefen\": {\"*.py\": \"! grep -n 'import dict' {datei}\"}}");
+            Workspace w4 = new Workspace(pw);
+            pruefe("pruefen: ohne Befund kein Zusatz",
+                   lauf(r, w4, "write", "{\"pfad\":\"gut.py\",\"inhalt\":\"x = 1\\n\"}"),
+                   t -> !t.contains("Pruefung"));
+            pruefe("pruefen: Befund steht im Ergebnis des write",
+                   lauf(r, w4, "write", "{\"pfad\":\"schlecht.py\",\"inhalt\":\"from typing import dict\\n\"}"),
+                   t -> t.contains("angelegt") && t.contains("Pruefung (! grep") && t.contains("1:from typing import dict"));
+            pruefe("pruefen: auch nach edit",
+                   lauf(r, w4, "edit", "{\"pfad\":\"gut.py\",\"alt\":\"x = 1\",\"neu\":\"from typing import dict\"}"),
+                   t -> t.contains("geaendert") && t.contains("Pruefung ("));
+            pruefe("pruefen: Muster passt nicht, keine Pruefung",
+                   lauf(r, w4, "write", "{\"pfad\":\"notiz.txt\",\"inhalt\":\"import dict\\n\"}"),
+                   t -> !t.contains("Pruefung"));
+            pruefe("pruefen: bei Syntaxfehler nur der Syntaxbefund",
+                   lauf(r, w4, "write", "{\"pfad\":\"kaputt.py\",\"inhalt\":\"from typing import dict(\\n\"}"),
+                   t -> t.contains("Syntaxfehler") && !t.contains("Pruefung ("));
+            pruefe("pruefen: Dateiname mit Leerzeichen und Hochkomma",
+                   lauf(r, w4, "write", "{\"pfad\":\"a b'c.py\",\"inhalt\":\"from typing import dict\\n\"}"),
+                   t -> t.contains("1:from typing import dict"));
+        }
+
         // -------------------------------------------------------------- glob
         {
             Path viele = Files.createTempDirectory("harness-glob");
