@@ -116,6 +116,10 @@
             <configuration><mainClass>de.dg1001.harness.agent.ProbeSchleife</mainClass></configuration>
           </execution>
           <execution>
+            <id>probe-bench</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.bench.ProbeBench</mainClass></configuration>
+          </execution>
+          <execution>
             <id>probe-tui</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.tui.ProbeTui</mainClass></configuration>
           </execution>

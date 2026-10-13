@@ -8,6 +8,7 @@
 #   jaja --liste                welche Modellserver gerade laufen
 #   jaja --model laguna-s-2.1   dieses Modell suchen, egal auf welchem Port
 #   jaja -- --max-turns 200     alles nach -- geht unveraendert an jaja
+#   jaja bench def.json         Benchmark (siehe README); ohne Portsuche
 #
 # Wenn Modell oder Adresse fehlen, werden die ueblichen Ports abgeklopft und
 # der Name beim Server selbst erfragt. Das ist der einzige Grund, warum es
@@ -32,6 +33,11 @@ PORTS=${JAJA_PORTS:-"8888 8889"}
 if [ -z "$JAR" ]; then
     echo "kein Jar in $VERZ/target — erst 'mvn package'" >&2
     exit 1
+fi
+
+# Der Benchmark nennt Modell und Adresse in seiner Definition selbst.
+if [ "${1:-}" = "bench" ]; then
+    exec java -jar "$JAR" "$@"
 fi
 
 # Fragt einen Port nach seinem Modellnamen. Leer, wenn dort nichts antwortet.

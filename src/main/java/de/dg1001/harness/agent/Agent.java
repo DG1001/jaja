@@ -236,8 +236,12 @@ public final class Agent {
      */
     public Ergebnis lauf(Transcript t) {
         laeufer = Thread.currentThread();
+        long ein0 = eingabeTokens, aus0 = ausgabeTokens, t0 = System.nanoTime();
         try {
-            return schleife(t);
+            Ergebnis e = schleife(t);
+            beobachter.laufEnde(e, eingabeTokens - ein0, ausgabeTokens - aus0,
+                                (System.nanoTime() - t0) / 1_000_000);
+            return e;
         } finally {
             laeufer = null;
             // Ein Abbruch kurz vor Schluss darf nicht am Faden kleben bleiben.
@@ -269,6 +273,7 @@ public final class Agent {
             if (kuerzung.ergebnis() == Elision.Ergebnis.AUSSICHTSLOS)
                 return new Ergebnis(Status.KONTEXT_ERSCHOEPFT, zug, aufrufeGesamt,
                                     null, kuerzung.hinweis());
+            if (kuerzung.ergebnis() == Elision.Ergebnis.GEKUERZT) beobachter.ereignis("kuerzung");
             if (kuerzung.ergebnis() == Elision.Ergebnis.GEKUERZT)
                 beobachter.hinweis(String.format("gekuerzt: %d -> %d Token (%d Stufen)",
                         kuerzung.vorher(), kuerzung.nachher(), kuerzung.stufen()));
@@ -276,6 +281,7 @@ public final class Agent {
             int zeichenVorher = t.zeichenGesamt() + werkzeugZeichen;
 
             ChatResponse a;
+            beobachter.anfrage(zug);
             try {
                 a = client.complete(t.nachrichten(), werkzeuge, wache());
             } catch (RuntimeException e) {
@@ -310,6 +316,7 @@ public final class Agent {
                             "Dreimal die Ausgabegrenze ohne Werkzeugaufruf erreicht. "
                           + "Das Modell plant, statt zu handeln — hoehere Ausgabegrenze "
                           + "oder knappere Aufgabenstellung versuchen.");
+                beobachter.ereignis(gekappt ? "gekappt" : "entartet");
                 beobachter.hinweis(String.format("%s Zug %d/%d, stosse an",
                         gekappt ? "gekappter" : "entarteter", entartet, MAX_ENTARTET));
                 t.add(new UserMessage(gekappt ? String.format(GEKAPPT, maxDenken) : ANSTOSS));
@@ -325,12 +332,14 @@ public final class Agent {
                 // Wissensfrage darf ohne Werkzeug beantwortet werden.
                 if (aufrufeGesamt == 0 && !untaetigAngestossen) {
                     untaetigAngestossen = true;
+                    beobachter.ereignis("nichts_getan");
                     beobachter.hinweis("Abschluss ohne jeden Werkzeugaufruf, stosse an");
                     t.add(new UserMessage(NICHTS_GETAN));
                     continue;
                 }
                 if (!ungeprueft.isEmpty() && !pruefungAngestossen) {
                     pruefungAngestossen = true;
+                    beobachter.ereignis("ungeprueft");
                     beobachter.hinweis("Abschluss ohne Pruefung nach Aenderung, stosse an");
                     t.add(new UserMessage(String.format(UNGEPRUEFT, aufzaehlung(ungeprueft))));
                     continue;
@@ -371,6 +380,7 @@ public final class Agent {
             // ein Modell, das dieselbe Stelle immer wieder anders anfasst und
             // dabei nie zurueckgeht, um den ganzen Zustand zu lesen.
             if (fehlerfolge >= MAX_FEHLERFOLGE) {
+                beobachter.ereignis("schleife");
                 beobachter.hinweis(String.format(
                         "%d Fehlschlaege in Folge, stosse zum Umdenken an", fehlerfolge));
                 t.add(new UserMessage(String.format(SCHLEIFE, fehlerfolge)));
@@ -378,6 +388,7 @@ public final class Agent {
             } else if (kreis != null) {
                 // Nur beim Erreichen der Schwelle und dann bei jedem weiteren
                 // Mal: wer nach dem Anstoss weiterkreist, soll es wieder hoeren.
+                beobachter.ereignis("kreis");
                 beobachter.hinweis(String.format("%s %d-mal mit gleichem Ergebnis, stosse an",
                         kreis, kreisZahl));
                 t.add(new UserMessage(String.format(KREIS,
@@ -400,6 +411,7 @@ public final class Agent {
         for (ToolSpec s : werkzeuge) namen.add(s.name());
         Textaufrufe.Fund f = Textaufrufe.erkenne(a.message().content(), namen);
         if (f == null) return a;
+        beobachter.ereignis("textaufruf");
         beobachter.hinweis(f.aufrufe().size() + " Werkzeugaufruf(e) aus dem Text gelesen "
                 + "-- der Server hat sie nicht als solche erkannt");
         return new ChatResponse(

@@ -18,6 +18,19 @@ import de.dg1001.harness.wire.Messages.ToolCall;
  */
 public interface Beobachter {
 
+    /** Die Anfrage fuer diesen Zug geht gleich hinaus. */
+    default void anfrage(int zug) {}
+
+    /**
+     * Der Harness hat eingegriffen: ein Anstoss, eine Kuerzung, ein aus dem
+     * Text gelesener Aufruf. {@code art} ist ein fester Bezeichner, keine
+     * Meldung -- damit eine Auswertung zaehlen kann, statt Text zu parsen.
+     */
+    default void ereignis(String art) {}
+
+    /** Ein Lauf ist zu Ende; Token und Dauer nur dieses Laufs. */
+    default void laufEnde(Agent.Ergebnis e, long eingabeTokens, long ausgabeTokens, long ms) {}
+
     /** Ein Zug ist beantwortet. */
     default void zug(int nummer, ChatResponse a, int budget) {}
 

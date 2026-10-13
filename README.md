@@ -8,8 +8,9 @@ It scores **86 / 86** on the four-task benchmark from
 [local-agentic-coding-128gb](https://github.com/DG1001/local-agentic-coding-128gb)
 with DeepSeek-V4-Flash on a 65,536-token context — the same score as opencode,
 and 47% slower. (Measured before the changes listed under
-[Not yet measured](#not-yet-measured); those change what the model sees.) That is the honest headline: **this is not a better harness
-than the mature ones.** It exists because a specific question needed answering,
+[Not yet measured](#not-yet-measured); those change what the model sees.)
+That is the honest headline: **this is not a better harness than the mature
+ones.** It exists because a specific question needed answering,
 and it turned out that answering it takes surprisingly little code.
 
 ## Why it exists
@@ -110,6 +111,7 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--max-turns <n>` | `60` | |
 | `--timeout-minutes <n>` | `25` | per request; local models are slow |
 | `--leise` | off | suppress progress output |
+| `--trace <file>` | — | write every event as JSONL (see [Benchmark](#benchmark-jaja-bench)) |
 | `--kein-stream` | off | request whole responses instead of streaming |
 | `--max-denken <n>` | off | cut a turn that thinks this many tokens without starting a tool call |
 | `--frei` | off | session: run `bash` without asking |
@@ -954,9 +956,64 @@ text — miss that and every calibration looks like an outlier and gets
 discarded, leaving the estimator stuck on its initial guess forever. (Ask how
 that particular sentence got written.)
 
+## Benchmark: `jaja bench`
+
+Everything in [Not yet measured](#not-yet-measured) needs runs, and the 1,095
+runs in this README were driven and evaluated by hand — with grep patterns
+that silently stop matching the moment a log message changes. So the harness
+now does both halves itself.
+
+**`--trace <file>`** writes one JSON line per event: each turn (duration,
+finish reason, tokens, thinking and text size), each tool call (name,
+argument, error, duration), every intervention by the harness (`entartet`,
+`ungeprueft`, `kreis`, `kuerzung`, `textaufruf`, …) as a fixed identifier
+rather than a sentence, and a final `ende` line with the totals. Works in
+batch mode and in the session.
+
+**`jaja bench <definition.json>`** runs tasks under several configurations:
+
+```json
+{
+  "jaja": ["--model", "deepseek-v4-flash", "--base-url", "http://127.0.0.1:8888/v1",
+           "--max-turns", "80"],
+  "aufgaben": [
+    {"name": "t1-debug", "vorlage": "aufgaben/t1/start", "prompt_datei": "aufgaben/t1/aufgabe.md",
+     "versteckt": "aufgaben/t1/hidden", "pruefung": "python3 -m pytest -q hidden_tests",
+     "punkte": "(\\d+) passed"}
+  ],
+  "konfigurationen": [
+    {"name": "basis", "argumente": []},
+    {"name": "ohne-stream", "argumente": ["--kein-stream"]}
+  ],
+  "runden": 10, "parallel": 1, "zeitgrenze_minuten": 60
+}
+```
+
+The rules are the lessons of doing it by hand:
+
+- **Configuration order rotates each round**, so a server that slows down
+  over hours cannot favour one of them.
+- **Each run gets its own copy of the template and its own process.** A run
+  that crashes, hangs or exits takes nothing else with it, and afterwards its
+  working directory, `trace.jsonl`, `agent.log` and `pruefung.log` are there to
+  look at under `bench-<name>/laeufe/<id>/`.
+- **Hidden tests are copied in after the run**, never before.
+- **Resumable.** Run it again and it skips what `ergebnisse.jsonl` already
+  holds — a nine-hour series will be interrupted.
+
+At the end — or any time with `jaja bench --bericht <dir>` — it writes
+`bericht.md`: per configuration the pass count, points, turns (median, mean ±
+sd), input tokens and wall clock; each configuration against the first,
+**paired by round and task**, with a permutation p-value (exact up to 16
+pairs, 20,000 draws above that, fixed seed); results per task; and how often
+the harness intervened. Under the comparison table it says what a p above
+0.05 means, because this README twice published noise as a finding.
+
+`--plan` lists the runs without starting any.
+
 ## Tests
 
-Thirteen offline suites, roughly five hundred checks, plus one round trip
+Fourteen offline suites, roughly five hundred checks, plus one round trip
 against a real server:
 
 ```bash
@@ -984,6 +1041,7 @@ failure, which is all Maven needs.
 | `ProbeIndexer` | batching, malformed answers, resumability, abort |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
 | `ProbeMarkdown` | headings, lists, tables, code fences, wrapping |
+| `ProbeBench` | statistics, run plan, trace, and the runner end to end against a fake model server |
 | `Probe` (live) | round trip to a real server |
 
 Three bugs that only a test caught, all invisible in normal operation:
@@ -1102,8 +1160,9 @@ src/main/java/de/dg1001/harness/
   agent/                 loop, transcript, elision, budget, estimator,
                          environment snapshot
   karte/                 source map: walk, store, ranking, descriptions
+  bench/                 benchmark runner, report, permutation tests
   tui/                   terminal, line editor, display, session
-src/test/java/…          thirteen probe suites
+src/test/java/…          fourteen probe suites
 pom.xml                  Maven; no dependencies
 ```
 

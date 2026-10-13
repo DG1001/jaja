@@ -43,6 +43,10 @@ public final class Main {
             dazu, was du getan hast.""";
 
     public static void main(String[] args) throws Exception {
+        if (args.length > 0 && args[0].equals("bench")) {
+            de.dg1001.harness.bench.Bench.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         Map<String, String> o = argumente(args);
 
         if (o.containsKey("hilfe") || o.containsKey("h")) { hilfe(); return; }
@@ -113,7 +117,8 @@ public final class Main {
 
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
-                    o.containsKey("karte"), herkunft(baseUrl), maxDenken);
+                    o.containsKey("karte"), herkunft(baseUrl), maxDenken,
+                    o.containsKey("trace") ? Path.of(o.get("trace")) : null, kopf(o, ws));
             return;
         }
 
@@ -123,8 +128,14 @@ public final class Main {
         Retry endpunkt = Retry.vorgabe(client,
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
+        de.dg1001.harness.agent.Beobachter beob = laut
+                ? de.dg1001.harness.agent.Beobachter.STDERR : de.dg1001.harness.agent.Beobachter.STILL;
+        de.dg1001.harness.agent.Protokoll protokoll = o.containsKey("trace")
+                ? de.dg1001.harness.agent.Protokoll.oeffne(Path.of(o.get("trace")), beob, kopf(o, ws))
+                : null;
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
-                                ws, budget, maxZuege, laut).mitDenkgrenze(maxDenken);
+                                ws, budget, maxZuege, protokoll != null ? protokoll : beob)
+                .mitDenkgrenze(maxDenken);
 
         long t0 = System.nanoTime();
         Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);
@@ -136,6 +147,7 @@ public final class Main {
                 agent.eingabeTokens(), agent.ausgabeTokens());
         if (e.hinweis() != null) System.err.println("[harness] " + e.hinweis());
         if (e.abschluss() != null) System.out.println(e.abschluss());
+        if (protokoll != null) protokoll.close();
 
         // Rueckgabewert: 0 nur bei ordentlichem Abschluss. Wichtig fuer den
         // Pruefstand -- ein "fertig", das nichts getan hat, soll auffallen.
@@ -152,7 +164,8 @@ public final class Main {
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen,
                                 Systemprompt.Ergebnis sp, boolean mitKarte,
-                                String herkunft, int maxDenken) throws Exception {
+                                String herkunft, int maxDenken, Path trace,
+                                Map<String, Object> kopf) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -165,8 +178,11 @@ public final class Main {
             // wie im Stapelbetrieb nach stderr, faende sie sich mitten in der
             // Statuszeile wieder -- gemessen an einem Server, der nicht antwortete.
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
+            de.dg1001.harness.agent.Protokoll protokoll = trace == null ? null
+                    : de.dg1001.harness.agent.Protokoll.oeffne(trace, anzeige, kopf);
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(mitKarte), ws, budget,
-                                    maxZuege, anzeige).mitDenkgrenze(maxDenken);
+                                    maxZuege, protokoll != null ? protokoll : anzeige)
+                    .mitDenkgrenze(maxDenken);
             if (sp.quelle() != null)
                 anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
                         + " (" + sp.zeichen() + " Zeichen)");
@@ -174,6 +190,23 @@ public final class Main {
             new Sitzung(agent, agent.schaetzer(), anzeige, System.in,
                         ws, budget, sp.prompt(), modell, fragen, endpunkt, herkunft).lauf();
         }
+    }
+
+    /**
+     * Was im Kopf des Protokolls steht: alle Schalter, ausser dem Schluessel
+     * und der Aufgabe selbst (die kann Seiten lang sein und steht in der
+     * Aufgabendatei). Dazu der Stand von jaja, damit eine Auswertung Laeufe
+     * verschiedener Fassungen auseinanderhalten kann.
+     */
+    private static Map<String, Object> kopf(Map<String, String> o, Workspace ws) {
+        Map<String, Object> k = new java.util.TreeMap<>();
+        for (var e : o.entrySet())
+            if (!e.getKey().equals("api-key") && !e.getKey().equals("prompt"))
+                k.put(e.getKey(), e.getValue());
+        k.put("arbeitsbereich", ws.wurzel().toString());
+        String version = Main.class.getPackage().getImplementationVersion();
+        k.put("jaja", version == null ? "dev" : version);
+        return k;
     }
 
     /**
@@ -247,6 +280,7 @@ public final class Main {
               --max-turns <n>           Vorgabe 60
               --timeout-minutes <n>     je Anfrage, Vorgabe 25
               --leise                   keine Fortschrittsmeldungen
+              --trace <datei>           jedes Ereignis als JSONL mitschreiben
               --kein-stream             Antworten am Stueck statt gestreamt
               --max-denken <n>          Zug kappen, wenn er so viele Token denkt,
                                         ohne ein Werkzeug aufzurufen (Vorgabe aus;
@@ -269,6 +303,9 @@ public final class Main {
 
             Ohne --prompt/--prompt-file startet eine Sitzung am Bildschirm.
 
-            Rueckgabewert 0 nur bei ordentlichem Abschluss.""");
+            Rueckgabewert 0 nur bei ordentlichem Abschluss.
+
+            jaja bench <definition.json>     Benchmark laufen lassen (siehe README)
+            jaja bench --bericht <verz>      Bericht aus vorhandenen Ergebnissen""");
     }
 }
