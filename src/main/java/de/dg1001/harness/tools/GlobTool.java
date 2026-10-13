@@ -20,6 +20,15 @@ public final class GlobTool implements Tool {
 
     static final int MAX_TREFFER = 300;
 
+    /**
+     * So viele Treffer werden hoechstens eingesammelt, bevor sortiert und auf
+     * {@link #MAX_TREFFER} gekappt wird. Vorher wurde beim 300. Treffer
+     * abgebrochen und erst danach sortiert -- das Ergebnis war eine Teilmenge
+     * in Reihenfolge des Dateisystems, alphabetisch sortiert, und sah aus wie
+     * der Anfang der vollstaendigen Liste.
+     */
+    static final int MAX_ERFASST = 20_000;
+
     /** Verzeichnisse, die nie interessieren und die Ausgabe zumuellen wuerden.
      *  Oeffentlich, weil die Quellenkarte denselben Baum laeuft und es genau
      *  eine Stelle geben soll, an der diese Politik steht. */
@@ -101,7 +110,7 @@ public final class GlobTool implements Tool {
             @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
                 Path rel = ws.wurzel().relativize(f);
                 if (passt(m, rel)) treffer.add(rel.toString());
-                return treffer.size() >= MAX_TREFFER
+                return treffer.size() >= MAX_ERFASST
                         ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFileFailed(Path f, IOException e) {
@@ -114,9 +123,11 @@ public final class GlobTool implements Tool {
 
         treffer.sort(null);
         StringBuilder b = new StringBuilder();
-        for (String s : treffer) b.append(s).append('\n');
-        if (treffer.size() >= MAX_TREFFER)
-            b.append("[bei ").append(MAX_TREFFER).append(" Treffern abgebrochen — Muster enger fassen]\n");
+        for (String s : treffer.subList(0, Math.min(MAX_TREFFER, treffer.size()))) b.append(s).append('\n');
+        if (treffer.size() > MAX_TREFFER)
+            b.append("[die ersten ").append(MAX_TREFFER).append(" von ")
+             .append(treffer.size() >= MAX_ERFASST ? "mindestens " : "").append(treffer.size())
+             .append(" Treffern — Muster enger fassen]\n");
 
         return Spill.vielleichtAuslagern(b.toString(), ws, "glob", false);
     }

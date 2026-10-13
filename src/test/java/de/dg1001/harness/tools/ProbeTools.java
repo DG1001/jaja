@@ -398,6 +398,16 @@ public final class ProbeTools {
         }
 
         // -------------------------------------------------------------- glob
+        {
+            Path viele = Files.createTempDirectory("harness-glob");
+            Workspace wg = new Workspace(viele);
+            for (int i = 0; i < 350; i++)
+                Files.writeString(viele.resolve(String.format("d%03d.txt", i)), "");
+            String g = lauf(r, wg, "glob", "{\"muster\":\"*.txt\"}");
+            pruefe("glob: gekappt wird nach dem Sortieren, nicht davor",
+                   g, t -> t.startsWith("d000.txt\n") && t.contains("d299.txt")
+                           && !t.contains("d300.txt") && t.contains("300 von 350"));
+        }
         pruefe("glob: findet nach Endung",
                lauf(r, ws, "glob", "{\"muster\":\"**/*.txt\"}"),
                t -> t.contains("hallo.txt") && t.contains("neu/tief/a.txt"));

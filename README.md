@@ -7,7 +7,8 @@ through in an evening.
 It scores **86 / 86** on the four-task benchmark from
 [local-agentic-coding-128gb](https://github.com/DG1001/local-agentic-coding-128gb)
 with DeepSeek-V4-Flash on a 65,536-token context — the same score as opencode,
-and 47% slower. That is the honest headline: **this is not a better harness
+and 47% slower. (Measured before the changes listed under
+[Not yet measured](#not-yet-measured); those change what the model sees.) That is the honest headline: **this is not a better harness
 than the mature ones.** It exists because a specific question needed answering,
 and it turned out that answering it takes surprisingly little code.
 
@@ -109,7 +110,10 @@ java -cp out de.dg1001.harness.Main --model … --prompt …
 | `--max-turns <n>` | `60` | |
 | `--timeout-minutes <n>` | `25` | per request; local models are slow |
 | `--leise` | off | suppress progress output |
+| `--kein-stream` | off | request whole responses instead of streaming |
+| `--max-denken <n>` | off | cut a turn that thinks this many tokens without starting a tool call |
 | `--frei` | off | session: run `bash` without asking |
+| `--sandkasten` | off | `bash` may only write inside the workspace, `/tmp` and package caches |
 | `--systemprompt <path>` | — | replace the built-in prompt entirely |
 | `--kein-agent-md` | off | ignore `AGENT.md` in the workspace |
 | `--karte` | off | add the `karte` tool (measured to buy nothing — see below) |
@@ -168,7 +172,24 @@ than once, nothing is changed and the model is told why. A silent multi-match
 is the most expensive failure in this class of tool — it surfaces only at test
 time, and by then the model is looking in the wrong place.
 
-#### `bash` is the one tool the workspace does not contain
+When nothing matches literally, `edit` looks again with **whitespace ignored**
+— indentation counted instead of copied, tabs for spaces, trailing blanks,
+CRLF files — and accepts that match only if it is unique. Indentation of the
+replacement is shifted line by line to fit. Content differences are never
+bridged; instead the error shows the most similar region verbatim with line
+numbers and the first line that differs, which is what an extra `read` would
+otherwise cost. `aenderungen` takes several replacements of one file in one
+call, all or nothing.
+
+`read` pages: up to 20,000 characters ending on a line boundary, with the line
+to continue from. It used to go through the spill path, whose 8,000-character
+limit meant a 400-line file arrived as its first sixty and last twenty lines.
+
+`write` and `edit` append a **syntax check** to their result — Python (`ast`,
+no `__pycache__`), JSON, JavaScript (`node --check`), shell (`bash -n`). Syntax
+only, never style: the finding has to be right every time.
+
+#### `bash` is the one tool the workspace does not contain — unless asked
 
 `glob`, `grep`, `read`, `write` and `edit` all resolve their paths through
 `Workspace`, which normalises them and rejects anything outside the root —
@@ -195,6 +216,19 @@ cannot see inside a script it invokes, or a path assembled from a variable.
 Refusing instead of warning was considered and rejected — `pip`, `git` and
 neighbouring checkouts are legitimate reasons to reach out, and a harness that
 blocks them is one people disable.
+
+A real boundary did not need a container after all. **`--sandkasten`** runs
+`bash` under `sandbox-exec` on macOS or `bwrap` on Linux, and confines
+*writing* to the workspace, the temp directories and the usual package caches
+(`~/.m2`, `~/.npm`, `~/.cache`, …). Reading and the network stay open, for the
+same reasons as above. If the tool is missing, jaja refuses to start rather
+than run unconfined. (Tested on macOS; the `bwrap` path has not run.)
+
+Servers and other long-running commands take **`hintergrund: true`**: output
+goes to `.harness/hintergrund/auftrag-N.log`, the call returns after three
+seconds with the PID and what was printed so far, and everything started this
+way is killed — children included — when the harness exits. With a trailing
+`&` instead, the server held the output pipe open and outlived the run.
 
 ## The session
 
@@ -226,14 +260,9 @@ copying still works.
 
 | | |
 |---|---|
-| `Ctrl-C` | abort the running turn — the session and the transcript survive |
+| `Ctrl-C` | abort the running turn at once — the session and the transcript survive |
 | `Ctrl-D` | quit |
 | `Ctrl-F` | switch asking on or off **while a turn is running** |
-
-The header names the endpoint, not just the model: `lokal :8888` in green,
-`api.deepseek.com` in yellow. Both were showing `deepseek-v4-flash` and were
-byte-identical, because the local server answers to the same model id as the
-hosted one — and one of the two bills.
 | `↑` `↓` | previous prompts |
 | `/neu` | drop the transcript and start over |
 | `/zeige [file]` | show a file, markdown typeset (default `NOTIZEN.md`) |
@@ -242,7 +271,18 @@ hosted one — and one of the two bills.
 | `/zusammenfassen [file]` | hand the work over to a file and start fresh |
 | `/speichern [name]` · `/laden [name]` | transcript to and from `.harness/sitzung-<name>.json` |
 | `/frei` · `/fragen` | run `bash` unasked · ask again |
+| `/zurueck` | undo what `write` and `edit` changed in the last request (not `bash`) |
 | `/verlauf` | transcript size and current token estimate |
+
+The header names the endpoint, not just the model: `lokal :8888` in green,
+`api.deepseek.com` in yellow. Both were showing `deepseek-v4-flash` and were
+byte-identical, because the local server answers to the same model id as the
+hosted one — and one of the two bills.
+
+Under every `edit` the session shows the changed lines in red and green; the
+model never sees them, so they cost nothing. While a turn streams, the status
+line counts what is being produced — `denkt · 6.2k` — instead of showing
+`denkt` unchanged for eleven minutes.
 
 Follow-up questions reuse the same `Transcript`, elided results included. That
 is the whole difference between an agent and a script with colours.
@@ -866,6 +906,43 @@ trimmed but it still fits, keep going and say so once.
 unknown field with a 400, and the thinking block is the single largest item in
 a transcript. Reading it is useful for progress output; returning it is not.
 
+**Streaming, after all — to be able to stop.** The client used to say
+streaming "brings nothing in batch mode but complexity". True as long as a
+response is only waited for; false once you want to *cut* one. The streamed
+response is reassembled into exactly what the non-streamed one would have
+been (tool calls by `index`, not `id` — the id is only in the first
+fragment), `stream_options.include_usage` keeps the estimator calibrated, and a
+watchdog closes a stream that goes silent, because Java's request timeout
+stops at the headers. A server that refuses `stream` is asked again without
+it, once and for the rest of the run. `--max-denken` is off by default: where
+to cut without cutting more good turns than bad ones is a measurement, not a
+taste.
+
+**Verification is demanded, not asked about.** This is the `--abgleich`
+lesson below, turned into mechanics: if a run wants to finish after changing
+non-documentation files with `write`/`edit` and has not run `bash` since, it
+is pushed once to run something whose output can contradict it — tests, a
+build, a quick call — with the explicit way out of saying why nothing can be
+run.
+
+**Circling is detected by call *and* result.** Three identical calls with
+identical results get a nudge. Three `pytest` runs after three fixes are work;
+three with the same output are not. Timings in milliseconds are ignored for
+the comparison, or no `bash` loop would ever look like one.
+
+**Stale reads go first when trimming.** A `read` of a file that was later
+changed is not just redundant but wrong, and a model copying from it searches
+for lines that are gone. Such results are elided first — but only when
+trimming is due anyway, because replacing something far back in the
+transcript costs the prefix cache from there on.
+
+**Tool calls written as text are recovered.** When a server's tool parser does
+not match the model, the call arrives verbatim in `content` —
+`<tool_call>{…}</tool_call>`, `[TOOL_CALLS]`, or a bare JSON object — and the
+run used to end with it as the "answer". Only forms that cannot be anything
+else are recognised, and every name has to be a real tool. Missing or
+duplicate call ids are filled in.
+
 **Large tool output is spilled to a file.** Output over 8,000 characters is
 cut to head + tail with the full text written to `.harness/spill/`, and the
 model is told the path. It can then grep the file instead of losing the turn.
@@ -879,8 +956,8 @@ that particular sentence got written.)
 
 ## Tests
 
-Seven offline suites, roughly two hundred checks, plus one round trip against
-a real server:
+Thirteen offline suites, roughly five hundred checks, plus one round trip
+against a real server:
 
 ```bash
 mvn test              # all offline suites, no server required
@@ -895,11 +972,14 @@ failure, which is all Maven needs.
 | Suite | |
 |---|---|
 | `ProbeJson` | parser, writer, escapes, malformed input |
-| `ProbeMessages` | the protocol details that fail silently |
+| `ProbeMessages` | the protocol details that fail silently, tool calls written as text |
+| `ProbeStrom` | streaming against an in-process HTTP server: fragments, fallback, cutting, silence, interrupt |
 | `ProbeRetry` | which errors are worth retrying |
-| `ProbeTools` | all six tools, path confinement, spilling |
-| `ProbeAgent` | budget, transcript, elision |
-| `ProbeSchleife` | the loop and approvals, against a scripted endpoint |
+| `ProbeTools` | all six tools, path confinement, tolerant edit, syntax check, undo, background, sandbox |
+| `ProbeAgent` | budget, transcript, elision, stale reads |
+| `ProbeSchleife` | the loop, nudges and abort, against a scripted endpoint |
+| `ProbeUmgebungsbild` | the environment snapshot |
+| `ProbeSystemprompt` | `AGENT.md` and the output-limit hint |
 | `ProbeKarte` | tree walk, import resolution, incrementality, staleness |
 | `ProbeIndexer` | batching, malformed answers, resumability, abort |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
@@ -977,10 +1057,27 @@ it knows the terminal width it is already running in.
 - **Not measured beyond one model on one benchmark.** 86/86 with
   DeepSeek-V4-Flash on four Python tasks in small repositories, one run. It
   says nothing about other models, large codebases, or ambiguous requirements.
-- **No subagents, no MCP, no streaming, no diff view, no file watching.**
-  `bash` asks before it runs and stays inside the workspace, but a `j` is still
-  a shell command executed with your permissions. Do not point it at anything
-  you would not hand to a stranger with a shell.
+- **No subagents, no MCP, no file watching.**
+  `bash` asks before it runs, but a `j` is still a shell command executed with
+  your permissions, and without `--sandkasten` it can write anywhere you can.
+  Do not point it at anything you would not hand to a stranger with a shell.
+
+## Not yet measured
+
+Everything in this list is covered by offline checks, and none of it has been
+through the benchmark yet. Several items change what the model sees, so the
+headline numbers above predate them.
+
+| Change | What to look at |
+|---|---|
+| `read` pages instead of head + tail | turns spent re-reading, tokens per run |
+| whitespace-tolerant `edit`, closest-match diagnosis, `aenderungen` | share of failed `edit` calls, loop nudges |
+| verification nudge, syntax check after `write`/`edit` | runs ending `FERTIG` with a broken import |
+| circling detection | runs hitting the turn limit |
+| stale reads elided first | number and cost of elision passes |
+| tool calls recovered from text | how often the notice appears per model and server |
+| streaming | wall clock, and the same results with `--kein-stream` |
+| `--max-denken` | where a cut-off saves more than it loses — default off until then |
 
 ## A note on the German
 
@@ -1006,7 +1103,7 @@ src/main/java/de/dg1001/harness/
                          environment snapshot
   karte/                 source map: walk, store, ranking, descriptions
   tui/                   terminal, line editor, display, session
-src/test/java/…          eight probe suites
+src/test/java/…          thirteen probe suites
 pom.xml                  Maven; no dependencies
 ```
 
