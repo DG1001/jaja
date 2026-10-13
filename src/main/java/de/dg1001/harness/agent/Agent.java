@@ -3,6 +3,7 @@ package de.dg1001.harness.agent;
 import de.dg1001.harness.tools.Tool;
 import de.dg1001.harness.tools.ToolRegistry;
 import de.dg1001.harness.wire.ChatEndpunkt;
+import de.dg1001.harness.wire.Strom;
 import de.dg1001.harness.wire.Messages.ChatResponse;
 import de.dg1001.harness.wire.Messages.FinishReason;
 import de.dg1001.harness.wire.Messages.ToolCall;
@@ -35,6 +36,9 @@ public final class Agent {
     private final AtomicBoolean abbruch = new AtomicBoolean(false);
 
     private Freigabe freigabe = Freigabe.ALLES;
+
+    /** Ab so vielen Denktoken ohne Werkzeugaufruf wird der Zug gekappt; 0 = nie. */
+    private int maxDenken = 0;
 
     /** Der Faden, der gerade {@link #lauf(Transcript)} ausfuehrt, sonst null. */
     private volatile Thread laeufer;
@@ -73,6 +77,21 @@ public final class Agent {
     public Agent mitFreigabe(Freigabe f) { this.freigabe = f; return this; }
 
     /**
+     * Kappt einen Zug, der so viele Token denkt, ohne ein Werkzeug anzufassen.
+     *
+     * <p>Der Fall, mit dem dieses Projekt anfing: 16.384 Ausgabetokens in einem
+     * Denkblock, siebzehn Minuten, kein Werkzeugaufruf. {@link #ANSTOSS} holt
+     * so einen Zug zurueck -- aber erst, nachdem er die ganze Ausgabegrenze
+     * verbraucht hat. Mit Streaming laesst er sich vorher beenden.
+     *
+     * <p>Vorgabe aus, und das bewusst: ein Zug, der lange denkt und dann einen
+     * guten Aufruf macht, wuerde ebenso gekappt. Wo die Grenze liegt, ohne
+     * mehr gute als schlechte Zuege zu treffen, ist eine Messfrage, keine
+     * Geschmacksfrage. Wirkt nur, wenn der Server streamt.
+     */
+    public Agent mitDenkgrenze(int token) { this.maxDenken = Math.max(0, token); return this; }
+
+    /**
      * Bricht den laufenden Zug ab. Darf aus einem anderen Faden gerufen
      * werden -- genau dafuer ist sie da.
      *
@@ -105,6 +124,12 @@ public final class Agent {
             Du hast die Ausgabegrenze erreicht, ohne ein Werkzeug aufzurufen. \
             Plane nicht weiter vor. Fang mit einem einzigen konkreten Schritt an \
             und rufe jetzt ein Werkzeug auf.""";
+
+    /** Wie {@link #ANSTOSS}, wenn der Harness den Denkblock selbst gekappt hat. */
+    private static final String GEKAPPT = """
+            Du hast ueber %d Token nachgedacht, ohne ein Werkzeug aufzurufen; der \
+            Zug wurde abgebrochen. Plane nicht weiter vor. Fang mit einem einzigen \
+            konkreten Schritt an und rufe jetzt ein Werkzeug auf.""";
 
     /**
      * Wie viele fehlgeschlagene Werkzeugaufrufe hintereinander als Schleife
@@ -233,7 +258,7 @@ public final class Agent {
 
             ChatResponse a;
             try {
-                a = client.complete(t.nachrichten(), werkzeuge);
+                a = client.complete(t.nachrichten(), werkzeuge, wache());
             } catch (RuntimeException e) {
                 // Ein Abbruch unterbricht den Faden und laesst die Anfrage
                 // scheitern. Das ist kein Fehler, sondern der Wunsch des Nutzers.
@@ -256,15 +281,17 @@ public final class Agent {
             // 16.384 Ausgabetokens in einen einzigen Denkblock steckte und nie
             // einen Werkzeugaufruf erzeugte -- der Lauf endete mit rc=0 und
             // leerem Verzeichnis. Ein Anstoss statt stillem Erfolg.
-            if (a.finishReason() == FinishReason.LENGTH && !a.message().hatWerkzeugaufrufe()) {
+            boolean gekappt = a.finishReason() == FinishReason.GEKAPPT;
+            if ((a.finishReason() == FinishReason.LENGTH || gekappt)
+                    && !a.message().hatWerkzeugaufrufe()) {
                 if (++entartet > MAX_ENTARTET)
                     return new Ergebnis(Status.STECKEN, zug, aufrufeGesamt, null,
                             "Dreimal die Ausgabegrenze ohne Werkzeugaufruf erreicht. "
                           + "Das Modell plant, statt zu handeln — hoehere Ausgabegrenze "
                           + "oder knappere Aufgabenstellung versuchen.");
-                beobachter.hinweis(String.format("entarteter Zug %d/%d, stosse an",
-                        entartet, MAX_ENTARTET));
-                t.add(new UserMessage(ANSTOSS));
+                beobachter.hinweis(String.format("%s Zug %d/%d, stosse an",
+                        gekappt ? "gekappter" : "entarteter", entartet, MAX_ENTARTET));
+                t.add(new UserMessage(gekappt ? String.format(GEKAPPT, maxDenken) : ANSTOSS));
                 continue;
             }
             entartet = 0;
@@ -325,6 +352,19 @@ public final class Agent {
 
         return new Ergebnis(Status.ZUGLIMIT, maxZuege, aufrufeGesamt, null,
                 "Zuglimit " + maxZuege + " erreicht.");
+    }
+
+    /**
+     * Hoert der entstehenden Antwort zu: meldet den Fortschritt an den
+     * Beobachter und kappt, wenn {@link #maxDenken} ueberschritten ist und noch
+     * kein Werkzeugaufruf begonnen hat. Ein Aufruf, der schon entsteht, wird
+     * nie abgeschnitten -- dann war das Denken nicht vergeblich.
+     */
+    private Strom wache() {
+        return (denken, text, aufrufe) -> {
+            beobachter.strom(schaetzer.schaetze(denken), schaetzer.schaetze(text + aufrufe));
+            return maxDenken > 0 && aufrufe == 0 && schaetzer.schaetze(denken) > maxDenken;
+        };
     }
 
     /** Fuehrt die Liste der ungeprueften Aenderungen nach einem Aufruf nach. */

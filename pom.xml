@@ -80,6 +80,10 @@
             <configuration><mainClass>de.dg1001.harness.wire.ProbeMessages</mainClass></configuration>
           </execution>
           <execution>
+            <id>probe-strom</id><phase>test</phase><goals><goal>java</goal></goals>
+            <configuration><mainClass>de.dg1001.harness.wire.ProbeStrom</mainClass></configuration>
+          </execution>
+          <execution>
             <id>probe-retry</id><phase>test</phase><goals><goal>java</goal></goals>
             <configuration><mainClass>de.dg1001.harness.wire.ProbeRetry</mainClass></configuration>
           </execution>

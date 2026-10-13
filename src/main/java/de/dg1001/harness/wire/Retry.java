@@ -46,11 +46,16 @@ public final class Retry implements ChatEndpunkt {
 
     @Override
     public ChatResponse complete(List<Message> verlauf, List<ToolSpec> werkzeuge) {
+        return complete(verlauf, werkzeuge, Strom.STILL);
+    }
+
+    @Override
+    public ChatResponse complete(List<Message> verlauf, List<ToolSpec> werkzeuge, Strom strom) {
         ChatClient.ChatFehler letzter = null;
 
         for (int versuch = 1; versuch <= versuche; versuch++) {
             try {
-                return innen.complete(verlauf, werkzeuge);
+                return innen.complete(verlauf, werkzeuge, strom);
             } catch (ChatClient.ChatFehler e) {
                 letzter = e;
                 // Ein unterbrochener Faden will abbrechen, nicht warten.

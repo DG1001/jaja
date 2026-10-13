@@ -21,6 +21,12 @@ public interface Beobachter {
     /** Ein Zug ist beantwortet. */
     default void zug(int nummer, ChatResponse a, int budget) {}
 
+    /**
+     * Zwischenstand einer entstehenden Antwort, geschaetzt in Token. Kommt
+     * oft -- je Stueck des Stroms --, darf also nichts Teures tun.
+     */
+    default void strom(int denkToken, int textToken) {}
+
     /** Ein Werkzeug wird gleich ausgefuehrt. */
     default void werkzeugStart(ToolCall tc) {}
 

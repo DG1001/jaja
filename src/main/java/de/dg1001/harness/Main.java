@@ -56,6 +56,7 @@ public final class Main {
         int maxZuege   = Integer.parseInt(o.getOrDefault("max-turns", "60"));
         int minuten    = Integer.parseInt(o.getOrDefault("timeout-minutes", "25"));
         boolean laut   = !o.containsKey("leise");
+        int maxDenken  = Integer.parseInt(o.getOrDefault("max-denken", "0"));
 
         if (modell == null) { System.err.println("--model fehlt"); hilfe(); System.exit(2); }
 
@@ -74,7 +75,8 @@ public final class Main {
                 o.containsKey("kein-agent-md"));
         ContextBudget budget = ContextBudget.vorgabe(fenster, maxAusgabe);
         ChatClient client = new ChatClient(baseUrl, modell, apiKey, maxAusgabe,
-                                           Duration.ofMinutes(minuten));
+                                           Duration.ofMinutes(minuten),
+                                           !o.containsKey("kein-stream"));
 
         // Ohne Aufgabe auf der Kommandozeile: Sitzung am Bildschirm. Muss vor
         // jeder stderr-Ausgabe entschieden werden -- eine einzige Zeile neben
@@ -108,7 +110,7 @@ public final class Main {
 
         if (amBildschirm) {
             sitzung(client, ws, budget, maxZuege, modell, !o.containsKey("frei"), sp,
-                    o.containsKey("karte"), herkunft(baseUrl));
+                    o.containsKey("karte"), herkunft(baseUrl), maxDenken);
             return;
         }
 
@@ -119,7 +121,7 @@ public final class Main {
                 m -> { if (laut) System.err.println("[harness] " + m); });
 
         Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(o.containsKey("karte")),
-                                ws, budget, maxZuege, laut);
+                                ws, budget, maxZuege, laut).mitDenkgrenze(maxDenken);
 
         long t0 = System.nanoTime();
         Agent.Ergebnis e = agent.lauf(sp.prompt(), aufgabe);
@@ -147,7 +149,7 @@ public final class Main {
     private static void sitzung(ChatClient client, Workspace ws, ContextBudget budget,
                                 int maxZuege, String modell, boolean fragen,
                                 Systemprompt.Ergebnis sp, boolean mitKarte,
-                                String herkunft) throws Exception {
+                                String herkunft, int maxDenken) throws Exception {
         Terminal term = Terminal.oeffne();
         if (term == null) {
             System.err.println("--prompt oder --prompt-file fehlt "
@@ -161,7 +163,7 @@ public final class Main {
             // Statuszeile wieder -- gemessen an einem Server, der nicht antwortete.
             ChatEndpunkt endpunkt = Retry.vorgabe(client, anzeige::hinweis);
             Agent agent = new Agent(endpunkt, ToolRegistry.vorgabe(mitKarte), ws, budget,
-                                    maxZuege, anzeige);
+                                    maxZuege, anzeige).mitDenkgrenze(maxDenken);
             if (sp.quelle() != null)
                 anzeige.hinweis("Systemprompt aus " + sp.quelle().getFileName()
                         + " (" + sp.zeichen() + " Zeichen)");
@@ -242,6 +244,10 @@ public final class Main {
               --max-turns <n>           Vorgabe 60
               --timeout-minutes <n>     je Anfrage, Vorgabe 25
               --leise                   keine Fortschrittsmeldungen
+              --kein-stream             Antworten am Stueck statt gestreamt
+              --max-denken <n>          Zug kappen, wenn er so viele Token denkt,
+                                        ohne ein Werkzeug aufzurufen (Vorgabe aus;
+                                        braucht Streaming)
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren

@@ -151,6 +151,17 @@ public final class Anzeige implements Beobachter {
         synchronized (schloss) { statusZeichnen(); System.out.flush(); }
     }
 
+    /**
+     * Zeigt, dass etwas entsteht und wie viel. Ein lokaler Zug dauert
+     * Minuten; "denkt" ueber elf Minuten unveraendert sieht aus wie ein
+     * Haenger, "denkt · 6.2k" nicht. Gezeichnet wird vom Ticker, hier wird nur
+     * der Text gesetzt -- sonst schriebe jedes Stueck des Stroms aufs Terminal.
+     */
+    @Override public void strom(int denkToken, int textToken) {
+        this.taetigkeit = textToken > 0 ? "schreibt · " + kurz(textToken)
+                                        : "denkt · " + kurz(denkToken);
+    }
+
     @Override public void werkzeugStart(ToolCall tc) {
         this.taetigkeit = tc.name();
         synchronized (schloss) { statusZeichnen(); System.out.flush(); }

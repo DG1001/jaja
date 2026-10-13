@@ -91,7 +91,10 @@ public final class Messages {
     // -------------------------------------------------------- Abbruchgrund
 
     public enum FinishReason {
-        STOP, TOOL_CALLS, LENGTH, OTHER;
+        STOP, TOOL_CALLS, LENGTH, OTHER,
+        /** Vom Harness selbst abgebrochen, waehrend die Antwort noch entstand
+         *  (siehe {@link Strom}). Kommt nie vom Server. */
+        GEKAPPT;
 
         public static FinishReason von(String s) {
             if (s == null) return OTHER;

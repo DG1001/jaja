@@ -15,4 +15,12 @@ import java.util.List;
  */
 public interface ChatEndpunkt {
     ChatResponse complete(List<Message> verlauf, List<ToolSpec> werkzeuge);
+
+    /**
+     * Wie oben, mit Mithoerer. Wer nicht streamen kann, ignoriert ihn -- der
+     * Aufrufer bekommt dann eben keine Zwischenstaende und kann nicht kappen.
+     */
+    default ChatResponse complete(List<Message> verlauf, List<ToolSpec> werkzeuge, Strom strom) {
+        return complete(verlauf, werkzeuge);
+    }
 }
