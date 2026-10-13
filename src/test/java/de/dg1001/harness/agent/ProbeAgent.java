@@ -129,6 +129,63 @@ public final class ProbeAgent {
                    r2.ergebnis() == Elision.Ergebnis.NICHT_NOETIG);
         }
 
+        // Ueberholte Leseergebnisse gehen zuerst. Reicht das, bleiben die
+        // juengeren, noch gueltigen ganz erhalten -- vorher waeren sie nach
+        // Alter mitgekuerzt worden.
+        {
+            ContextBudget eng = new ContextBudget(20_000, 4_000, 500, 0.70);   // Ziel ~6975
+            Transcript v = new Transcript(new TokenSchaetzer());
+            v.beginne("Systemprompt", "Aufgabe");
+            String gross = "zeile mit altem inhalt\n".repeat(450);           // ~3000 Token
+            for (int i = 0; i < 5; i++) {
+                ToolCall tc = new ToolCall("r" + i, "read", "{\"pfad\":\"./kern.py\"}");
+                v.add(new AssistantMessage(null, null, List.of(tc)));
+                v.addWerkzeugErgebnis(tc, gross, false);
+            }
+            ToolCall vorher = new ToolCall("r8", "read", "{\"pfad\":\"anders.py\",\"zeilen\":5}");
+            v.add(new AssistantMessage(null, null, List.of(vorher)));
+            v.addWerkzeugErgebnis(vorher, "vor dem gescheiterten edit gelesen", false);
+            ToolCall fehl = new ToolCall("e0", "edit", "{\"pfad\":\"anders.py\",\"alt\":\"x\",\"neu\":\"y\"}");
+            v.add(new AssistantMessage(null, null, List.of(fehl)));
+            v.addWerkzeugErgebnis(fehl, "'alt' kommt nicht vor", true);
+            ToolCall ed = new ToolCall("e1", "edit", "{\"alt\":\"a\",\"neu\":\"b\",\"pfad\":\"kern.py\"}");
+            v.add(new AssistantMessage(null, null, List.of(ed)));
+            v.addWerkzeugErgebnis(ed, "geaendert: kern.py", false);
+            ToolCall jung = new ToolCall("r9", "read", "{\"pfad\":\"anders.py\"}");
+            v.add(new AssistantMessage(null, null, List.of(jung)));
+            v.addWerkzeugErgebnis(jung, "inhalt von anders.py, noch gueltig", false);
+
+            Elision.Bericht b3 = new Elision(eng).vielleichtKuerzen(v);
+            String text = v.nachrichten().toString();
+            pruefe("ueberholt: Leseergebnisse vor einem edit werden ersetzt",
+                   b3.ergebnis() == Elision.Ergebnis.GEKUERZT
+                   && text.contains("[ueberholt: read kern.py, danach geaendert")
+                   && !text.contains("zeile mit altem inhalt"));
+            pruefe("ueberholt: juengere gueltige Ergebnisse bleiben ganz",
+                   text.contains("inhalt von anders.py, noch gueltig")
+                   && text.contains("geaendert: kern.py"));
+            pruefe("ueberholt: ein gescheitertes edit ueberholt nichts",
+                   text.contains("vor dem gescheiterten edit gelesen"));
+        }
+        {
+            Transcript v = new Transcript(new TokenSchaetzer());
+            v.beginne("Systemprompt", "Aufgabe");
+            for (String id : new String[]{"a", "b"}) {
+                ToolCall tc = new ToolCall(id, "read", "{\"pfad\":\"x.py\",\"ab_zeile\":1}");
+                v.add(new AssistantMessage(null, null, List.of(tc)));
+                v.addWerkzeugErgebnis(tc, "inhalt " + id, false);
+            }
+            ToolCall anders = new ToolCall("c", "read", "{\"pfad\":\"x.py\",\"ab_zeile\":500}");
+            v.add(new AssistantMessage(null, null, List.of(anders)));
+            v.addWerkzeugErgebnis(anders, "inhalt c", false);
+            int ersetzt2 = v.kuerzeUeberholte();
+            String text = v.nachrichten().toString();
+            pruefe("ueberholt: doppeltes read, nur das fruehere geht",
+                   ersetzt2 == 1 && text.contains("erneut gelesen") && text.contains("inhalt b"));
+            pruefe("ueberholt: anderer Ausschnitt derselben Datei bleibt",
+                   text.contains("inhalt c"));
+        }
+
         // Passt noch, aber nichts mehr zu kuerzen: weitermachen, nicht abbrechen.
         {
             ContextBudget eng = ContextBudget.vorgabe(65536, 16384);

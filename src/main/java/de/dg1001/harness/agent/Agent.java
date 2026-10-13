@@ -351,7 +351,7 @@ public final class Agent {
             int kreisZahl = 0;
             for (int i = 0; i < aufrufe.size(); i++) {
                 Tool.ToolResult r = ergebnisse.get(i);
-                t.addWerkzeugErgebnis(aufrufe.get(i), r.text());
+                t.addWerkzeugErgebnis(aufrufe.get(i), r.text(), r.istFehler());
                 beobachter.werkzeugFertig(aufrufe.get(i), r);
                 fehlerfolge = r.istFehler() ? fehlerfolge + 1 : 0;
                 merkeAenderung(aufrufe.get(i), r, ungeprueft);

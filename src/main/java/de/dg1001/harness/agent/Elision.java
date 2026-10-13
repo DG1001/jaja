@@ -83,13 +83,18 @@ public final class Elision {
             return new Bericht(Ergebnis.NICHT_NOETIG, vorher, vorher, 0, null);
 
         int[] stand = {vorher};
-        int stufen = 0;
+        int stufen = 1;
+
+        // Vorstufe: was ohnehin nicht mehr stimmt. Reicht das schon bis zum
+        // Ziel, bleiben juengere, noch gueltige Ergebnisse ganz erhalten.
+        if (t.kuerzeUeberholte() > 0) stand[0] = t.schaetzeTokens();
 
         // Erste Stufe: Werkzeugergebnisse.
-        for (int s : STUFEN) {
-            stufen++;
-            if (schritt(t, stand, () -> t.kuerze(s))) break;
-        }
+        if (stand[0] > ziel())
+            for (int s : STUFEN) {
+                stufen++;
+                if (schritt(t, stand, () -> t.kuerze(s))) break;
+            }
 
         // Zweite Stufe: die Argumente alter Werkzeugaufrufe. Ohne sie steckt
         // jede laengere Sitzung fest, sobald ein paar Dateien geschrieben
@@ -133,9 +138,11 @@ public final class Elision {
         stand[0] = neu;
         // Nicht bis zur Ausloeseschwelle, sondern bis zum Ziel darunter --
         // sonst ist der naechste Zug schon wieder darueber. Siehe ZIEL.
-        if (neu <= (int) (budget.nutzbareEingabe() * ZIEL)) return true;
+        if (neu <= ziel()) return true;
         return ersetzt == 0 && wirkung < MINDESTWIRKUNG;
     }
+
+    private int ziel() { return (int) (budget.nutzbareEingabe() * ZIEL); }
 
     private boolean gewarnt = false;
 

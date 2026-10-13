@@ -33,18 +33,28 @@ public final class Transcript {
      * @param argKurz   knappe Fassung der Argumente, fuer die Kurzfassung
      * @param gekuerzt  schon gekuerzt? verhindert doppeltes Kuerzen
      * @param fest      darf nie gekuerzt werden (Praefix)
+     * @param pfad      bei Werkzeugergebnissen das Feld 'pfad', normalisiert,
+     *                  sonst null -- fuer das Erkennen ueberholter Leseergebnisse
+     * @param aufruf    die Argumente des Aufrufs, roh
+     * @param fehler    ob der Aufruf fehlschlug; ein gescheitertes edit
+     *                  ueberholt nichts
      */
     private record Eintrag(Message nachricht, String werkzeug, String argKurz,
-                           boolean gekuerzt, boolean fest) {
+                           boolean gekuerzt, boolean fest,
+                           String pfad, String aufruf, boolean fehler) {
+
+        Eintrag(Message nachricht, String werkzeug, String argKurz, boolean gekuerzt, boolean fest) {
+            this(nachricht, werkzeug, argKurz, gekuerzt, fest, null, null, false);
+        }
 
         Eintrag alsGekuerzt(Message ersatz) {
-            return new Eintrag(ersatz, werkzeug, argKurz, true, fest);
+            return new Eintrag(ersatz, werkzeug, argKurz, true, fest, pfad, aufruf, fehler);
         }
 
         /** Nachricht ersetzen, ohne den Eintrag als gekuerzt zu markieren:
          *  das Kennzeichen gehoert zur ersten Stufe (Werkzeugergebnisse). */
         Eintrag mitNachricht(Message ersatz) {
-            return new Eintrag(ersatz, werkzeug, argKurz, gekuerzt, fest);
+            return new Eintrag(ersatz, werkzeug, argKurz, gekuerzt, fest, pfad, aufruf, fehler);
         }
     }
 
@@ -74,8 +84,14 @@ public final class Transcript {
 
     /** Werkzeugergebnis samt Herkunft, damit spaeter sinnvoll gekuerzt werden kann. */
     public void addWerkzeugErgebnis(ToolCall tc, String inhalt) {
+        addWerkzeugErgebnis(tc, inhalt, false);
+    }
+
+    /** Mit Erfolgskennzeichen: nur ein gelungenes write/edit ueberholt ein read. */
+    public void addWerkzeugErgebnis(ToolCall tc, String inhalt, boolean fehler) {
         eintraege.add(new Eintrag(new ToolMessage(tc.id(), inhalt),
-                tc.name(), kurzArgument(tc.argumentsJson()), false, false));
+                tc.name(), kurzArgument(tc.argumentsJson()), false, false,
+                pfadAus(tc.argumentsJson()), tc.argumentsJson(), fehler));
     }
 
     /** Wird nach dem Bau der Werkzeugliste einmal gesetzt. */
@@ -156,6 +172,48 @@ public final class Transcript {
             gekuerzt++;
         }
         return gekuerzt;
+    }
+
+    /**
+     * Ersetzt Leseergebnisse, die spaeter ueberholt wurden -- unabhaengig vom
+     * Alter. Rueckgabe: wie viele.
+     *
+     * <p>Ueberholt ist ein {@code read}, wenn dieselbe Datei danach erfolgreich
+     * per {@code write}/{@code edit} geaendert wurde, oder wenn genau derselbe
+     * Aufruf spaeter noch einmal kam. Im ersten Fall ist der Inhalt nicht nur
+     * ueberfluessig, sondern falsch: er zeigt einen Stand, den es nicht mehr
+     * gibt, und ein Modell, das sich darauf stuetzt, kopiert in sein naechstes
+     * {@code edit} Zeilen, die nicht mehr da sind.
+     *
+     * <p>Laeuft nur als erste Stufe einer ohnehin faelligen Kuerzung, nie
+     * nebenher. Jede Ersetzung aendert den Verlauf weit vorn, und lokal kostet
+     * das den Praefix-Cache ab dieser Stelle -- gemessen 16 bis 43 Sekunden je
+     * Kuerzung (siehe {@link Elision}). Wenn schon gekuerzt wird, dann zuerst
+     * das, was ohnehin nicht mehr stimmt.
+     */
+    public int kuerzeUeberholte() {
+        java.util.Set<String> geaendertDanach = new java.util.HashSet<>();
+        java.util.Set<String> gelesenDanach = new java.util.HashSet<>();
+        int ersetzt = 0;
+        for (int i = eintraege.size() - 1; i >= 0; i--) {
+            Eintrag e = eintraege.get(i);
+            if (e.pfad() == null || !(e.nachricht() instanceof ToolMessage alt)) continue;
+            boolean lesen = "read".equals(e.werkzeug());
+            if (lesen && !e.fest() && !e.gekuerzt()) {
+                String grund = geaendertDanach.contains(e.pfad())
+                        ? "danach geaendert, bei Bedarf neu lesen"
+                        : gelesenDanach.contains(e.aufruf()) ? "weiter unten erneut gelesen" : null;
+                if (grund != null) {
+                    eintraege.set(i, e.alsGekuerzt(new ToolMessage(alt.toolCallId(),
+                            "[ueberholt: read " + e.pfad() + ", " + grund + "]")));
+                    ersetzt++;
+                }
+            }
+            if (lesen && !e.fehler()) gelesenDanach.add(e.aufruf());
+            if (!e.fehler() && ("write".equals(e.werkzeug()) || "edit".equals(e.werkzeug())))
+                geaendertDanach.add(e.pfad());
+        }
+        return ersetzt;
     }
 
     /**
@@ -252,6 +310,18 @@ public final class Transcript {
             if (q > p) b.append(", ").append(inhalt, p + 1, q);
         }
         return b.append(']').toString();
+    }
+
+    /** Das Feld 'pfad', normalisiert ("./a.py" und "a.py" sind dieselbe Datei). */
+    private static String pfadAus(String argumentsJson) {
+        try {
+            String p = de.dg1001.harness.wire.Json.str(de.dg1001.harness.wire.Json.feld(
+                    de.dg1001.harness.wire.Json.parse(argumentsJson), "pfad"));
+            if (p == null || p.isBlank()) return null;
+            return java.nio.file.Path.of(p).normalize().toString();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** Aus {"pfad":"src/motor.py"} wird src/motor.py — nur der erste Wert. */
