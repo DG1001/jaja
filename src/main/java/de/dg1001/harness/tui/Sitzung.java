@@ -136,6 +136,7 @@ public final class Sitzung {
                       + " · " + Terminal.GRAU + ws.wurzel() + Terminal.NORMAL);
         anzeige.zeile("  " + Terminal.GRAU
                       + (fragen ? "bash fragt nach · " : "bash laeuft ungefragt · ")
+                      + (ws.sandkasten() != null ? "im Sandkasten · " : "")
                       + "/hilfe zeigt die Befehle" + Terminal.NORMAL);
         anzeige.leerzeile();
     }

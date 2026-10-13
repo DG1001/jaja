@@ -364,6 +364,39 @@ public final class ProbeTools {
                         && t.contains("lief nicht im Hintergrund weiter"));
         }
 
+        // ------------------------------------------------- Sandkasten
+        // Das "Draussen" liegt bewusst unter target/ und nicht im temp-Verzeichnis:
+        // das ist im Sandkasten schreibbar und taugte nicht als Gegenprobe.
+        Path aussen = Path.of("target", "sandkasten-aussen").toAbsolutePath();
+        de.dg1001.harness.ws.Sandkasten sk = null;
+        try {
+            sk = de.dg1001.harness.ws.Sandkasten.fuerDiesesSystem(ws.wurzel());
+        } catch (java.io.IOException e) {
+            System.out.println("Sandkasten: " + e.getMessage() + " -- Pruefungen uebersprungen");
+        }
+        if (sk != null) {
+            Files.createDirectories(aussen);
+            Files.deleteIfExists(aussen.resolve("x"));
+            Workspace ws2 = new Workspace(ws.wurzel()).mitSandkasten(sk);
+            pruefe("Sandkasten: schreiben im Arbeitsbereich geht",
+                   lauf(r, ws2, "bash", "{\"kommando\":\"echo drin > drin.txt && cat drin.txt\"}"),
+                   t -> t.contains("drin") && t.contains("Rueckgabewert 0"));
+            pruefe("Sandkasten: schreiben ausserhalb wird verweigert",
+                   lauf(r, ws2, "bash", "{\"kommando\":\"touch '" + aussen.resolve("x") + "'\"}"),
+                   t -> !t.contains("Rueckgabewert 0") && !Files.exists(aussen.resolve("x")));
+            pruefe("Sandkasten: /tmp, /dev/null und stderr gehen",
+                   lauf(r, ws2, "bash", "{\"kommando\":\"f=$(mktemp) && echo a > $f && rm $f"
+                           + " && echo b > /dev/null && echo c >&2 && echo d > /dev/stdout\"}"),
+                   t -> t.contains("c") && t.contains("d") && t.contains("Rueckgabewert 0"));
+            pruefe("Sandkasten: lesen ausserhalb bleibt erlaubt",
+                   lauf(r, ws2, "bash", "{\"kommando\":\"ls '" + aussen + "' && echo gelesen\"}"),
+                   t -> t.contains("gelesen"));
+            pruefe("Sandkasten: gilt auch im Hintergrund",
+                   lauf(r, ws2, "bash", "{\"kommando\":\"touch '" + aussen.resolve("x")
+                           + "'\",\"hintergrund\":true}"),
+                   t -> !t.contains("Rueckgabewert 0") && !Files.exists(aussen.resolve("x")));
+        }
+
         // -------------------------------------------------------------- glob
         pruefe("glob: findet nach Endung",
                lauf(r, ws, "glob", "{\"muster\":\"**/*.txt\"}"),

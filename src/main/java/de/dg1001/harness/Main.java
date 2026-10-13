@@ -65,6 +65,8 @@ public final class Main {
                 : o.get("prompt");
 
         Workspace ws = new Workspace(cwd);
+        if (o.containsKey("sandkasten"))
+            ws.mitSandkasten(de.dg1001.harness.ws.Sandkasten.fuerDiesesSystem(ws.wurzel()));
 
         // Projektregeln aus AGENT.md, sofern vorhanden.
         // Die Ausgabegrenze gehoert in den Prompt, weil sie das Modell sonst
@@ -85,7 +87,8 @@ public final class Main {
 
         if (laut && !amBildschirm) {
             System.err.println("[harness] Modell " + modell + " an " + baseUrl);
-            System.err.println("[harness] Arbeitsbereich " + ws.wurzel());
+            System.err.println("[harness] Arbeitsbereich " + ws.wurzel()
+                    + (ws.sandkasten() != null ? " (bash im Sandkasten)" : ""));
             System.err.println("[harness] " + budget.bericht(0));
         }
         if (laut && sp.quelle() != null)
@@ -249,6 +252,9 @@ public final class Main {
                                         ohne ein Werkzeug aufzurufen (Vorgabe aus;
                                         braucht Streaming)
               --frei                    Sitzung: bash ohne Nachfrage ausfuehren
+              --sandkasten              bash darf nur im Arbeitsbereich, in /tmp und
+                                        in Paketcaches schreiben (macOS sandbox-exec,
+                                        Linux bwrap); fehlt das Werkzeug, Abbruch
               --systemprompt <pfad>     ersetzt den eingebauten Systemprompt ganz
               --kein-agent-md           AGENT.md im Projekt ignorieren
               --karte                   das Werkzeug 'karte' dazunehmen (Vorgabe: aus,

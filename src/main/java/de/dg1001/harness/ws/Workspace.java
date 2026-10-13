@@ -22,6 +22,7 @@ public final class Workspace {
     private final Path wurzel;
     private final Path auslagerung;
     private final Sicherung sicherung = new Sicherung();
+    private volatile Sandkasten sandkasten;
 
     public Workspace(Path wurzel) throws IOException {
         this.wurzel = wurzel.toAbsolutePath().normalize().toRealPath();
@@ -31,6 +32,11 @@ public final class Workspace {
 
     public Path wurzel() { return wurzel; }
     public Path auslagerungsverzeichnis() { return auslagerung; }
+
+    /** Sperrt bash-Schreibzugriffe ein; null heisst: keiner. */
+    public Sandkasten sandkasten() { return sandkasten; }
+
+    public Workspace mitSandkasten(Sandkasten s) { this.sandkasten = s; return this; }
 
     /** Was write und edit vor dem Schreiben sichern, fuer /zurueck. */
     public Sicherung sicherung() { return sicherung; }

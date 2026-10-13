@@ -60,7 +60,7 @@ public final class BashTool implements Tool {
                 Math.max(1, Tool.zahl(args, "sekunden", VORGABE_SEKUNDEN)));
         if (args.get("hintergrund") instanceof Boolean h && h) return hintergrund(kommando, ws);
 
-        ProcessBuilder pb = new ProcessBuilder("bash", "-lc", kommando);
+        ProcessBuilder pb = new ProcessBuilder(shell(kommando, ws));
         pb.directory(ws.wurzel().toFile());
         pb.redirectErrorStream(true);          // sonst Verklemmungsgefahr
         // Der Arbeitsbereich als Umgebungsvariable, damit Skripte ihn kennen,
@@ -126,6 +126,12 @@ public final class BashTool implements Tool {
         return Spill.vielleichtAuslagern(b.toString(), ws, "bash", code != 0);
     }
 
+    /** {@code bash -lc kommando}, im Sandkasten, falls einer gesetzt ist. */
+    static List<String> shell(String kommando, Workspace ws) {
+        List<String> b = List.of("bash", "-lc", kommando);
+        return ws.sandkasten() == null ? b : ws.sandkasten().umhuelle(b);
+    }
+
     // ----------------------------------------------------------- Hintergrund
 
     /** Wie lange ein Hintergrundauftrag beobachtet wird, bevor der Aufruf zurueckkehrt. */
@@ -175,7 +181,7 @@ public final class BashTool implements Tool {
         java.nio.file.Files.createDirectories(dir);
         java.nio.file.Path log = dir.resolve("auftrag-" + NUMMER.incrementAndGet() + ".log");
 
-        ProcessBuilder pb = new ProcessBuilder("bash", "-lc", kommando);
+        ProcessBuilder pb = new ProcessBuilder(shell(kommando, ws));
         pb.directory(ws.wurzel().toFile());
         pb.redirectErrorStream(true);
         pb.redirectOutput(log.toFile());
