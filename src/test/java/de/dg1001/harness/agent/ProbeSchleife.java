@@ -326,6 +326,38 @@ public final class ProbeSchleife {
                    && "laesst sich hier nicht ausfuehren".equals(e.abschluss()));
         }
 
+        // ------------------------------------- Kreisen mit gleichem Ergebnis
+        {
+            Skript s = new Skript(ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  ruft("read", "{\"pfad\":\"a.txt\"}"),
+                                  text("fertig", FinishReason.STOP));
+            lauf(s, tmp, 10);
+            pruefe("dreimal derselbe Aufruf, dasselbe Ergebnis: Anstoss",
+                   s.gesehen.get(3).toString().contains("3-mal aufgerufen")
+                   && !s.gesehen.get(2).toString().contains("-mal aufgerufen"));
+        }
+        {
+            // Laufzeit in ms aendert sich jedes Mal -- darf den Kreis nicht verdecken.
+            Skript s = new Skript(ruft("bash", "{\"kommando\":\"echo gleich\"}"),
+                                  ruft("bash", "{\"kommando\":\"echo gleich\"}"),
+                                  ruft("bash", "{\"kommando\":\"echo gleich\"}"),
+                                  text("fertig", FinishReason.STOP));
+            lauf(s, tmp, 10);
+            pruefe("bash mit gleicher Ausgabe: Laufzeit verdeckt den Kreis nicht",
+                   s.gesehen.get(3).toString().contains("3-mal aufgerufen"));
+        }
+        {
+            // Gegenprobe: derselbe Befehl mit wechselndem Ergebnis ist Arbeit.
+            Skript s = new Skript(ruft("bash", "{\"kommando\":\"echo x >> z.txt; wc -l < z.txt\"}"),
+                                  ruft("bash", "{\"kommando\":\"echo x >> z.txt; wc -l < z.txt\"}"),
+                                  ruft("bash", "{\"kommando\":\"echo x >> z.txt; wc -l < z.txt\"}"),
+                                  text("fertig", FinishReason.STOP));
+            lauf(s, tmp, 10);
+            pruefe("gleicher Befehl, anderes Ergebnis: kein Anstoss",
+                   !s.gesehen.get(3).toString().contains("-mal aufgerufen"));
+        }
+
         // ----------------------------------------------------- Abbruch
         // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
         // lokal dauert ein Zug Minuten.

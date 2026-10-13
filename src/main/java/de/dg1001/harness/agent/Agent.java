@@ -153,6 +153,22 @@ public final class Agent {
             noch einmal.""";
 
     /**
+     * Wie oft derselbe Aufruf mit demselben Ergebnis als Kreisen gilt.
+     *
+     * <p>Die Fehlerfolge oben sieht nur Fehlschlaege. Ein Modell kann aber
+     * auch erfolgreich im Kreis laufen: dieselbe Datei lesen, dieselbe Suche,
+     * derselbe Testlauf ohne Aenderung dazwischen. Gezaehlt wird deshalb
+     * Aufruf UND Ergebnis -- dreimal pytest nach drei Korrekturen ist Arbeit,
+     * dreimal pytest mit derselben Ausgabe ist es nicht.
+     */
+    private static final int MAX_GLEICHE = 3;
+
+    private static final String KREIS = """
+            Du hast %s jetzt %d-mal aufgerufen, jedes Mal mit demselben Ergebnis. \
+            Das wiederholt sich, ohne voranzukommen. Arbeite mit dem Ergebnis, das du \
+            schon hast, oder waehle einen anderen Schritt.""";
+
+    /**
      * Angehaengt, wenn ein Lauf ohne einen einzigen Werkzeugaufruf enden will.
      *
      * <p>{@link #ANSTOSS} deckt nur den Fall ab, dass die Ausgabegrenze erreicht
@@ -239,6 +255,7 @@ public final class Agent {
         // Geaendert seit dem letzten bash, in Aufrufreihenfolge. Leer heisst:
         // nichts zu pruefen, oder schon geprueft.
         java.util.LinkedHashSet<String> ungeprueft = new java.util.LinkedHashSet<>();
+        java.util.Map<String, Integer> gleiche = new java.util.HashMap<>();
 
         for (int zug = 1; zug <= maxZuege; zug++) {
 
@@ -330,12 +347,19 @@ public final class Agent {
             // In AUFRUFREIHENFOLGE anhaengen, nicht in Fertigstellungsreihenfolge:
             // sonst unterscheidet sich der Kontext zwischen zwei sonst gleichen
             // Laeufen und der Praefix-Cache greift beim naechsten Zug nicht mehr.
+            String kreis = null;
+            int kreisZahl = 0;
             for (int i = 0; i < aufrufe.size(); i++) {
                 Tool.ToolResult r = ergebnisse.get(i);
                 t.addWerkzeugErgebnis(aufrufe.get(i), r.text());
                 beobachter.werkzeugFertig(aufrufe.get(i), r);
                 fehlerfolge = r.istFehler() ? fehlerfolge + 1 : 0;
                 merkeAenderung(aufrufe.get(i), r, ungeprueft);
+                int n = gleiche.merge(fingerabdruck(aufrufe.get(i), r), 1, Integer::sum);
+                if (n >= MAX_GLEICHE && n > kreisZahl) {
+                    kreis = aufrufe.get(i).name() + " " + aufrufe.get(i).kurz();
+                    kreisZahl = n;
+                }
             }
 
             // -------------------------------------------------- Schleife
@@ -347,6 +371,13 @@ public final class Agent {
                         "%d Fehlschlaege in Folge, stosse zum Umdenken an", fehlerfolge));
                 t.add(new UserMessage(String.format(SCHLEIFE, fehlerfolge)));
                 fehlerfolge = 0;
+            } else if (kreis != null) {
+                // Nur beim Erreichen der Schwelle und dann bei jedem weiteren
+                // Mal: wer nach dem Anstoss weiterkreist, soll es wieder hoeren.
+                beobachter.hinweis(String.format("%s %d-mal mit gleichem Ergebnis, stosse an",
+                        kreis, kreisZahl));
+                t.add(new UserMessage(String.format(KREIS,
+                        kreis.length() > 120 ? kreis.substring(0, 120) + "…" : kreis, kreisZahl)));
             }
         }
 
@@ -365,6 +396,18 @@ public final class Agent {
             beobachter.strom(schaetzer.schaetze(denken), schaetzer.schaetze(text + aufrufe));
             return maxDenken > 0 && aufrufe == 0 && schaetzer.schaetze(denken) > maxDenken;
         };
+    }
+
+    /**
+     * Aufruf und Ergebnis als Schluessel. Laufzeiten und Namen von
+     * Auslagerungsdateien aendern sich bei jedem Aufruf, ohne dass sich etwas
+     * getan haette -- sie fallen heraus, sonst saehe kein Kreis wie ein Kreis aus.
+     */
+    static String fingerabdruck(ToolCall tc, Tool.ToolResult r) {
+        String text = r.text() == null ? "" : r.text()
+                .replaceAll("\\[Rueckgabewert (-?\\d+), \\d+ ms\\]", "[Rueckgabewert $1]")
+                .replaceAll("\\.harness/spill/\\S+", ".harness/spill/…");
+        return tc.name() + '\u0000' + tc.argumentsJson() + '\u0000' + text.hashCode() + ':' + text.length();
     }
 
     /** Fuehrt die Liste der ungeprueften Aenderungen nach einem Aufruf nach. */
