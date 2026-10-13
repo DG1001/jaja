@@ -206,12 +206,38 @@ public final class Messages {
      * wuerde dabei beschnitten — das ist selten genug und immer noch besser
      * als seitenweise Selbstgespraech als Antwort auszuliefern.
      */
-    static String ohneDenkblock(String inhalt) {
+    public static String ohneDenkblock(String inhalt) {
         if (inhalt == null) return null;
         int ende = inhalt.lastIndexOf("</think>");
         if (ende < 0) return inhalt;
         String rest = inhalt.substring(ende + "</think>".length()).strip();
         return rest.isEmpty() ? inhalt : rest;      // nur Denken, kein Text: lieber alles behalten
+    }
+
+    private static final java.util.concurrent.atomic.AtomicLong KENNUNG =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    /**
+     * Fuellt fehlende und doppelte Kennungen auf.
+     *
+     * <p>Manche lokalen Server liefern Werkzeugaufrufe ohne {@code id}, oder
+     * zwei Aufrufe eines Zuges mit derselben. Das Ergebnis wird aber ueber
+     * {@code tool_call_id} zugeordnet, und ein {@code null} dort beantwortet
+     * der naechste Zug mit einem 400 -- oder, schlimmer, ein Template ordnet
+     * die Ergebnisse stillschweigend falsch zu.
+     */
+    public static List<ToolCall> mitKennungen(List<ToolCall> aufrufe) {
+        java.util.Set<String> gesehen = new java.util.HashSet<>();
+        List<ToolCall> aus = new ArrayList<>(aufrufe.size());
+        for (ToolCall tc : aufrufe) {
+            String id = tc.id();
+            if (id == null || id.isBlank() || !gesehen.add(id)) {
+                id = "call_jaja_" + KENNUNG.incrementAndGet();
+                gesehen.add(id);
+            }
+            aus.add(id.equals(tc.id()) ? tc : new ToolCall(id, tc.name(), tc.argumentsJson()));
+        }
+        return aus;
     }
 
     /** Liest {@code tool_calls} aus einer Nachricht. */
@@ -244,7 +270,7 @@ public final class Messages {
         String denken = Json.str(Json.feld(msg, "reasoning_content"));
         if (denken == null) denken = Json.str(Json.feld(msg, "reasoning"));
 
-        List<ToolCall> aufrufe = werkzeugaufrufe(msg);
+        List<ToolCall> aufrufe = mitKennungen(werkzeugaufrufe(msg));
 
         FinishReason grund = FinishReason.von(Json.str(Json.feld(c0, "finish_reason")));
 

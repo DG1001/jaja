@@ -4,6 +4,8 @@ import de.dg1001.harness.tools.Tool;
 import de.dg1001.harness.tools.ToolRegistry;
 import de.dg1001.harness.wire.ChatEndpunkt;
 import de.dg1001.harness.wire.Strom;
+import de.dg1001.harness.wire.Textaufrufe;
+import de.dg1001.harness.wire.Messages.AssistantMessage;
 import de.dg1001.harness.wire.Messages.ChatResponse;
 import de.dg1001.harness.wire.Messages.FinishReason;
 import de.dg1001.harness.wire.Messages.ToolCall;
@@ -285,6 +287,8 @@ public final class Agent {
                 return new Ergebnis(Status.FEHLER, zug, aufrufeGesamt, null, e.getMessage());
             }
 
+            a = aufrufeAusText(a, werkzeuge);
+
             schaetzer.kalibriere(zeichenVorher, a.usage().promptTokens());
             eingabeTokens += a.usage().promptTokens();
             ausgabeTokens += a.usage().completionTokens();
@@ -383,6 +387,24 @@ public final class Agent {
 
         return new Ergebnis(Status.ZUGLIMIT, maxZuege, aufrufeGesamt, null,
                 "Zuglimit " + maxZuege + " erreicht.");
+    }
+
+    /**
+     * Holt Werkzeugaufrufe aus dem Text, wenn der Server sie nicht als solche
+     * erkannt hat (siehe {@link Textaufrufe}). Ohne das endete der Lauf an
+     * dieser Stelle als FERTIG -- mit einem Aufruf als Schlussantwort.
+     */
+    private ChatResponse aufrufeAusText(ChatResponse a, List<ToolSpec> werkzeuge) {
+        if (a.message().hatWerkzeugaufrufe() || a.message().content() == null) return a;
+        java.util.Set<String> namen = new java.util.HashSet<>();
+        for (ToolSpec s : werkzeuge) namen.add(s.name());
+        Textaufrufe.Fund f = Textaufrufe.erkenne(a.message().content(), namen);
+        if (f == null) return a;
+        beobachter.hinweis(f.aufrufe().size() + " Werkzeugaufruf(e) aus dem Text gelesen "
+                + "-- der Server hat sie nicht als solche erkannt");
+        return new ChatResponse(
+                new AssistantMessage(f.rest(), a.message().reasoningContent(), f.aufrufe()),
+                FinishReason.TOOL_CALLS, a.usage());
     }
 
     /**

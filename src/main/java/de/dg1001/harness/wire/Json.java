@@ -221,6 +221,37 @@ public final class Json {
             return this;
         }
 
+        /**
+         * Schreibt einen geparsten Wert zurueck: Map, List, String, Number,
+         * Boolean oder null. Ganzzahlige Zahlen ohne ".0" -- der Leser liefert
+         * alles als Double, und {@code "zeilen":50.0} soll nicht dort stehen,
+         * wo das Modell {@code 50} geschrieben hat.
+         */
+        public Writer wert(Object v) {
+            switch (v) {
+                case null -> roh("null");
+                case String s -> text(s);
+                case Boolean w -> wahr(w);
+                case Number z -> {
+                    double d = z.doubleValue();
+                    roh(d == Math.rint(d) && !Double.isInfinite(d) && Math.abs(d) < 1e15
+                            ? Long.toString((long) d) : Double.toString(d));
+                }
+                case Map<?, ?> m -> {
+                    objektAuf();
+                    for (var e : m.entrySet()) feld(String.valueOf(e.getKey())).wert(e.getValue());
+                    objektZu();
+                }
+                case List<?> l -> {
+                    listeAuf();
+                    for (Object o : l) wert(o);
+                    listeZu();
+                }
+                default -> text(String.valueOf(v));
+            }
+            return this;
+        }
+
         /** Kurzform fuer Feld + Textwert; laesst null-Werte ganz weg. */
         public Writer textFeld(String name, String v) {
             if (v == null) return this;

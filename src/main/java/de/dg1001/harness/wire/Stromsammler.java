@@ -117,7 +117,7 @@ final class Stromsammler {
         List<ToolCall> l = new ArrayList<>();
         for (String[] a : aufrufe.values())
             l.add(new ToolCall(a[0], a[1], a[2].isEmpty() ? "{}" : a[2]));
-        return new ChatResponse(new AssistantMessage(inhalt(), denkText(), l),
+        return new ChatResponse(new AssistantMessage(inhalt(), denkText(), Messages.mitKennungen(l)),
                                 FinishReason.von(grund), nutzung);
     }
 

@@ -129,6 +129,59 @@ public final class ProbeMessages {
         catch (RuntimeException e) { geworfen = true; }
         pruefe("Antwort ohne choices wirft", geworfen, true);
 
+        // ------------------------------------------------ Kennungen
+        {
+            var l = Messages.mitKennungen(List.of(
+                    new Messages.ToolCall(null, "read", "{}"),
+                    new Messages.ToolCall("x", "read", "{}"),
+                    new Messages.ToolCall("x", "glob", "{}"),
+                    new Messages.ToolCall("", "bash", "{}")));
+            pruefe("Kennungen: fehlende und doppelte werden aufgefuellt",
+                   l.get(0).id() != null && l.get(1).id().equals("x")
+                   && !l.get(2).id().equals("x") && !l.get(3).id().isBlank()
+                   && l.stream().map(Messages.ToolCall::id).distinct().count() == 4);
+            ChatResponse ohne = Messages.lies(Json.parse("{\"choices\":[{\"message\":{\"tool_calls\":["
+                    + "{\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}"));
+            pruefe("Kennungen: Server ohne id bekommt trotzdem eine",
+                   ohne.message().toolCalls().get(0).id() != null);
+        }
+
+        // ------------------------------------------- Aufrufe im Text
+        {
+            var namen = java.util.Set.of("read", "glob", "bash");
+            var f = Textaufrufe.erkenne("Ich schaue nach.\n<tool_call>\n{\"name\": \"read\", "
+                    + "\"arguments\": {\"pfad\": \"a.py\", \"zeilen\": 50}}\n</tool_call>", namen);
+            pruefe("Text: Hermes/Qwen-Marke erkannt",
+                   f != null && f.aufrufe().size() == 1 && f.aufrufe().get(0).name().equals("read"));
+            pruefe("Text: Argumente als JSON-Zeichenkette, Zahl ohne .0",
+                   f == null ? null : f.aufrufe().get(0).argumentsJson(), "{\"pfad\":\"a.py\",\"zeilen\":50}");
+            pruefe("Text: der Rest bleibt als Inhalt", f == null ? null : f.rest(), "Ich schaue nach.");
+
+            var zwei = Textaufrufe.erkenne("<tool_call>{\"name\":\"read\",\"arguments\":{\"pfad\":\"a\"}}</tool_call>"
+                    + "<tool_call>{\"name\":\"glob\",\"arguments\":{\"muster\":\"*\"}}</tool_call>", namen);
+            pruefe("Text: zwei Marken, zwei Aufrufe mit verschiedenen Kennungen",
+                   zwei != null && zwei.aufrufe().size() == 2 && zwei.rest() == null
+                   && !zwei.aufrufe().get(0).id().equals(zwei.aufrufe().get(1).id()));
+
+            var mistral = Textaufrufe.erkenne("[TOOL_CALLS][{\"name\":\"bash\",\"arguments\":{\"kommando\":\"ls\"}}]", namen);
+            pruefe("Text: Mistral [TOOL_CALLS]",
+                   mistral != null && mistral.aufrufe().get(0).argumentsJson().equals("{\"kommando\":\"ls\"}"));
+
+            var llama = Textaufrufe.erkenne("```json\n{\"name\": \"glob\", \"parameters\": {\"muster\": \"**/*.py\"}}\n```", namen);
+            pruefe("Text: ganzer Inhalt ist ein Aufruf (Llama, im Codeblock)",
+                   llama != null && llama.aufrufe().get(0).name().equals("glob"));
+
+            pruefe("Text: JSON mitten in Prosa bleibt Text",
+                   Textaufrufe.erkenne("So sieht ein Aufruf aus: {\"name\": \"read\", \"arguments\": {}} -- fertig.", namen),
+                   null);
+            pruefe("Text: unbekannter Name gilt nicht",
+                   Textaufrufe.erkenne("{\"name\": \"loesche_alles\", \"arguments\": {}}", namen), null);
+            pruefe("Text: abgeschnittene Marke gilt nicht",
+                   Textaufrufe.erkenne("<tool_call>{\"name\": \"read\", \"argum", namen), null);
+            pruefe("Text: gewoehnliche Antwort bleibt Antwort",
+                   Textaufrufe.erkenne("Der Fehler lag in rabatt().", namen), null);
+        }
+
         System.out.println(fehlgeschlagen == 0
                 ? "\nAlle Pruefungen bestanden."
                 : "\n" + fehlgeschlagen + " Pruefung(en) fehlgeschlagen.");

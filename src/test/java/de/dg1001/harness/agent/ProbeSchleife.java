@@ -358,6 +358,17 @@ public final class ProbeSchleife {
                    !s.gesehen.get(3).toString().contains("-mal aufgerufen"));
         }
 
+        // --------------------------------------- Aufruf als Text
+        {
+            Skript s = new Skript(text("<tool_call>{\"name\":\"read\",\"arguments\":{\"pfad\":\"a.txt\"}}</tool_call>",
+                                       FinishReason.STOP),
+                                  text("fertig", FinishReason.STOP));
+            Agent.Ergebnis e = lauf(s, tmp, 10);
+            pruefe("Aufruf im Text wird ausgefuehrt statt als Antwort genommen",
+                   e.status() == Agent.Status.FERTIG && e.werkzeugaufrufe() == 1
+                   && s.gesehen.get(1).toString().contains("inhalt"));
+        }
+
         // ----------------------------------------------------- Abbruch
         // Ctrl-C darf nicht warten, bis die laufende Anfrage von selbst endet:
         // lokal dauert ein Zug Minuten.
