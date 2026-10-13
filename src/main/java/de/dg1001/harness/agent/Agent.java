@@ -208,7 +208,7 @@ public final class Agent {
     private static final String UNGEPRUEFT = """
             Du hast %s geaendert und danach nichts mehr ausgefuehrt. Pruefe das \
             Ergebnis jetzt mit einem Werkzeugaufruf, dessen Ausgabe dir widersprechen \
-            kann: die Tests, ein Build oder ein kurzer Aufruf des geaenderten Codes. \
+            kann: %s. \
             Falls sich das hier nicht pruefen laesst, sag in einem Satz warum.""";
 
     /** Endungen, deren Aenderung keinen Pruefaufruf verlangt. */
@@ -341,7 +341,14 @@ public final class Agent {
                     pruefungAngestossen = true;
                     beobachter.ereignis("ungeprueft");
                     beobachter.hinweis("Abschluss ohne Pruefung nach Aenderung, stosse an");
-                    t.add(new UserMessage(String.format(UNGEPRUEFT, aufzaehlung(ungeprueft))));
+                    // Mit dem konkreten Befehl, wenn einer bekannt ist: "die
+                    // Tests" laesst das Modell erst suchen, wie man sie startet.
+                    String test = ws.projekt().testJetzt(ws.wurzel());
+                    t.add(new UserMessage(String.format(UNGEPRUEFT, aufzaehlung(ungeprueft),
+                            test != null ? "die Tests mit " + test + ", oder ein kurzer Aufruf "
+                                         + "des geaenderten Codes"
+                                         : "die Tests, ein Build oder ein kurzer Aufruf des "
+                                         + "geaenderten Codes")));
                     continue;
                 }
                 return new Ergebnis(Status.FERTIG, zug, aufrufeGesamt,

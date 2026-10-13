@@ -726,6 +726,28 @@ A description that no longer matches misleads the model more actively than no
 description at all; that is the one warning every write-up on this subject
 repeats, so it is designed in rather than bolted on.
 
+## Project settings: `.jaja.json`
+
+`AGENT.md` is prose for the model. What the harness itself has to evaluate
+does not belong in prose read with regular expressions, so it lives in
+`.jaja.json` in the workspace root, meant to be committed:
+
+```json
+{"test": "python3 -m pytest -q",
+ "pruefen": {"*.py": "ruff check {datei}"},
+ "erlauben": ["pytest*", "git status", "git diff*"]}
+```
+
+All of it is optional, and a broken file stops jaja with a message instead of
+being silently ignored. Without `test`, the command is derived from what is
+there — `./mvnw` or `mvn`, `./gradlew`, `cargo`, `go test`, `npm test` unless
+it is npm's placeholder, pytest or unittest (through `.venv` if present),
+`make test` — and only if the tool is on the `PATH`. A wrong suggestion costs
+a turn; none costs nothing. The command appears in the environment snapshot
+(`Tests: …`) and, word for word, in the verification nudge; on an empty
+directory it is detected again at nudge time, because there the tests only
+come into existence during the run.
+
 ## Project rules: `AGENT.md`
 
 An `AGENT.md` (or `AGENTS.md`) in the workspace root is picked up
@@ -1013,7 +1035,7 @@ the harness intervened. Under the comparison table it says what a p above
 
 ## Tests
 
-Fourteen offline suites, roughly five hundred checks, plus one round trip
+Fifteen offline suites, roughly five hundred checks, plus one round trip
 against a real server:
 
 ```bash
@@ -1041,6 +1063,7 @@ failure, which is all Maven needs.
 | `ProbeIndexer` | batching, malformed answers, resumability, abort |
 | `ProbeTui` | line editor, display, approval keys, handover prompt |
 | `ProbeMarkdown` | headings, lists, tables, code fences, wrapping |
+| `ProbeProjekt` | `.jaja.json`, test command detection |
 | `ProbeBench` | statistics, run plan, trace, and the runner end to end against a fake model server |
 | `Probe` (live) | round trip to a real server |
 
@@ -1162,7 +1185,7 @@ src/main/java/de/dg1001/harness/
   karte/                 source map: walk, store, ranking, descriptions
   bench/                 benchmark runner, report, permutation tests
   tui/                   terminal, line editor, display, session
-src/test/java/…          fourteen probe suites
+src/test/java/…          fifteen probe suites
 pom.xml                  Maven; no dependencies
 ```
 

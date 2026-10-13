@@ -23,6 +23,7 @@ public final class Workspace {
     private final Path auslagerung;
     private final Sicherung sicherung = new Sicherung();
     private volatile Sandkasten sandkasten;
+    private volatile Projekt projekt;
 
     public Workspace(Path wurzel) throws IOException {
         this.wurzel = wurzel.toAbsolutePath().normalize().toRealPath();
@@ -32,6 +33,22 @@ public final class Workspace {
 
     public Path wurzel() { return wurzel; }
     public Path auslagerungsverzeichnis() { return auslagerung; }
+
+    /**
+     * Die Einstellungen aus {@code .jaja.json}. Wer Fehler darin melden will,
+     * liest sie vorher selbst ({@link Projekt#lies}) und setzt sie; hier wird
+     * ein Fehler zu {@link Projekt#LEER}, damit kein Werkzeug daran scheitert.
+     */
+    public Projekt projekt() {
+        Projekt p = projekt;
+        if (p == null) {
+            try { p = Projekt.lies(wurzel); } catch (IOException e) { p = Projekt.LEER; }
+            projekt = p;
+        }
+        return p;
+    }
+
+    public Workspace mitProjekt(Projekt p) { this.projekt = p; return this; }
 
     /** Sperrt bash-Schreibzugriffe ein; null heisst: keiner. */
     public Sandkasten sandkasten() { return sandkasten; }

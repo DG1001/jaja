@@ -143,6 +143,10 @@ public final class Umgebungsbild {
     public static String anhaengen(String aufgabe, Workspace ws) {
         try {
             String bild = erzeuge(ws.wurzel());
+            // Der Testbefehl gehoert zu dem, wonach der Agent sonst zuerst
+            // sucht: pytest oder unittest, mvn oder ./mvnw.
+            String test = ws.projekt().testJetzt(ws.wurzel());
+            if (test != null) bild += "\nTests: " + test;
             return bild.isEmpty() ? aufgabe : aufgabe + "\n\n" + bild;
         } catch (Throwable ignoriert) {
             return aufgabe;

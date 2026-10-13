@@ -54,7 +54,7 @@ public final class Sandkasten {
         boolean mac = os.contains("mac");
         if (mac && !Files.isExecutable(Path.of("/usr/bin/sandbox-exec")))
             throw new IOException("--sandkasten: /usr/bin/sandbox-exec fehlt");
-        if (!mac && !imPfad("bwrap"))
+        if (!mac && !Projekt.imPfad("bwrap"))
             throw new IOException("--sandkasten: bwrap (bubblewrap) nicht gefunden -- "
                     + "z. B. apt install bubblewrap");
 
@@ -113,14 +113,6 @@ public final class Sandkasten {
         } catch (IOException | RuntimeException ignoriert) {
             // nicht da, nicht schlimm
         }
-    }
-
-    private static boolean imPfad(String name) {
-        String pfad = System.getenv("PATH");
-        if (pfad == null) return false;
-        for (String d : pfad.split(java.io.File.pathSeparator))
-            if (!d.isEmpty() && Files.isExecutable(Path.of(d, name))) return true;
-        return false;
     }
 
     private static String maskiere(String s) {

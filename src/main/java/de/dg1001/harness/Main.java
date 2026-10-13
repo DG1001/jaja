@@ -69,6 +69,14 @@ public final class Main {
                 : o.get("prompt");
 
         Workspace ws = new Workspace(cwd);
+        // Vorab gelesen, damit ein Fehler in .jaja.json gemeldet wird statt
+        // still zu "keine Einstellungen" zu werden.
+        try {
+            ws.mitProjekt(de.dg1001.harness.ws.Projekt.lies(ws.wurzel()));
+        } catch (java.io.IOException e) {
+            System.err.println("[harness] " + e.getMessage());
+            System.exit(2);
+        }
         if (o.containsKey("sandkasten"))
             ws.mitSandkasten(de.dg1001.harness.ws.Sandkasten.fuerDiesesSystem(ws.wurzel()));
 

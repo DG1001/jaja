@@ -300,6 +300,17 @@ public final class ProbeSchleife {
                    e.status() == Agent.Status.FERTIG && "geprueft und fertig".equals(e.abschluss()));
         }
         {
+            // Mit erkennbarem Testbefehl nennt der Anstoss ihn woertlich.
+            Path pt = Files.createTempDirectory("jaja-testbefehl");
+            Files.writeString(pt.resolve("Makefile"), "test:\n\ttrue\n");
+            Skript s = new Skript(ruft("write", "{\"pfad\":\"neu.c\",\"inhalt\":\"int x;\\n\"}"),
+                                  text("fertig", FinishReason.STOP),
+                                  text("gut", FinishReason.STOP));
+            lauf(s, pt, 10);
+            pruefe("Anstoss nennt den erkannten Testbefehl",
+                   s.gesehen.get(2).toString().contains("die Tests mit make test"));
+        }
+        {
             Skript s = new Skript(ruft("write", "{\"pfad\":\"neu2.py\",\"inhalt\":\"x = 1\\n\"}"),
                                   ruft("bash", "{\"kommando\":\"python3 neu2.py\"}"),
                                   text("fertig", FinishReason.STOP));
