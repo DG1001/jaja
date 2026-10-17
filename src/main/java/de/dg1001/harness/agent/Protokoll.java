@@ -70,6 +70,7 @@ public final class Protokoll implements Beobachter, AutoCloseable {
         m.put("grund", a.finishReason().name().toLowerCase());
         m.put("eingabe", a.usage().promptTokens());
         m.put("ausgabe", a.usage().completionTokens());
+        if (a.usage().cacheBekannt()) m.put("cache", a.usage().cachedTokens());
         m.put("aufrufe", a.message().toolCalls().size());
         m.put("denk_zeichen", laenge(a.message().reasoningContent()));
         m.put("text_zeichen", laenge(a.message().content()));

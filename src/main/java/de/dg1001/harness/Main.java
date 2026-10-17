@@ -161,8 +161,12 @@ public final class Main {
 
         System.err.printf("[harness] %s nach %d Zuegen, %d Werkzeugaufrufen, %d s (%s)%n",
                 e.status(), e.zuege(), e.werkzeugaufrufe(), sek, agent.schaetzer());
-        System.err.printf("[harness] Token: %d Eingabe, %d Ausgabe%n",
-                agent.eingabeTokens(), agent.ausgabeTokens());
+        System.err.printf("[harness] Token: %d Eingabe, %d Ausgabe%s%n",
+                agent.eingabeTokens(), agent.ausgabeTokens(),
+                agent.eingabeMitCacheAngabe() > 0
+                        ? String.format(" -- davon aus dem Cache %d (%.1f %%)", agent.cacheTokens(),
+                                        100.0 * agent.cacheTokens() / agent.eingabeMitCacheAngabe())
+                        : "");
         if (e.hinweis() != null) System.err.println("[harness] " + e.hinweis());
         if (e.abschluss() != null) System.out.println(e.abschluss());
         if (protokoll != null) protokoll.close();

@@ -70,6 +70,14 @@ public final class Agent {
     public long eingabeTokens() { return eingabeTokens; }
     public long ausgabeTokens() { return ausgabeTokens; }
 
+    /** Cache-Treffer laut Server, und die Eingabe der Zuege, fuer die der
+     *  Server sie nennt -- nicht alle tun das, und eine Quote ueber Zuege ohne
+     *  Angabe waere geraten. */
+    private long cacheTokens = 0, eingabeMitCacheAngabe = 0;
+
+    public long cacheTokens() { return cacheTokens; }
+    public long eingabeMitCacheAngabe() { return eingabeMitCacheAngabe; }
+
     public Agent(ChatEndpunkt client, ToolRegistry registry, Workspace ws,
                  ContextBudget budget, int maxZuege, boolean laut) {
         this(client, registry, ws, budget, maxZuege,
@@ -429,6 +437,10 @@ public final class Agent {
             schaetzer.kalibriere(zeichenVorher, a.usage().promptTokens());
             eingabeTokens += a.usage().promptTokens();
             ausgabeTokens += a.usage().completionTokens();
+            if (a.usage().cacheBekannt()) {
+                cacheTokens += a.usage().cachedTokens();
+                eingabeMitCacheAngabe += a.usage().promptTokens();
+            }
             t.add(a.message());
 
             beobachter.zug(zug, a, budget.nutzbareEingabe());

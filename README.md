@@ -172,6 +172,14 @@ for the whole conversation. On local hardware prefill is the expensive part —
 one measured run had a 63.5% cache hit rate, which is not something to throw
 away for tidiness.
 
+The hit rate is now read from the server instead of worked out afterwards: the
+status line shows `Cache NN %` for the last turn, the protocol records `cache`
+per turn, and the batch summary prints the total. Three dialects carry the
+same number — OpenAI and vLLM `usage.prompt_tokens_details.cached_tokens`,
+DeepSeek `usage.prompt_cache_hit_tokens`, llama.cpp `timings.cache_n`. vLLM
+only sends it when started with `--enable-prompt-tokens-details`; without it
+nothing is shown rather than a guess.
+
 `edit` enforces a **uniqueness rule**: if the search text occurs zero or more
 than once, nothing is changed and the model is told why. A silent multi-match
 is the most expensive failure in this class of tool — it surfaces only at test

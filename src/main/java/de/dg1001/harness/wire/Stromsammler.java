@@ -34,6 +34,7 @@ final class Stromsammler {
     private int aufrufZeichen = 0;
     private String grund;
     private Usage nutzung = Usage.LEER;
+    private int cacheAusTimings = -1;
 
     /**
      * Liest Ereignisse bis {@code [DONE]} oder Stromende.
@@ -62,11 +63,14 @@ final class Stromsammler {
     }
 
     void nimm(Object stueck) {
-        Object u = Json.feld(stueck, "usage");
-        if (u instanceof Map)
-            nutzung = new Usage(Json.num(Json.feld(u, "prompt_tokens"), 0),
-                                Json.num(Json.feld(u, "completion_tokens"), 0),
-                                Json.num(Json.feld(u, "total_tokens"), 0));
+        Usage u = Usage.aus(stueck);
+        if (u != null) nutzung = u;
+        // llama.cpp schickt timings mit dem letzten Inhaltsstueck, die Nutzung
+        // danach gesondert -- in welcher Reihenfolge, ist nicht zugesagt.
+        int cacheN = Usage.cacheAusTimings(stueck);
+        if (cacheN >= 0) cacheAusTimings = cacheN;
+        if (!nutzung.cacheBekannt() && cacheAusTimings >= 0 && nutzung != Usage.LEER)
+            nutzung = nutzung.mitCache(cacheAusTimings);
 
         List<Object> choices = Json.arr(Json.feld(stueck, "choices"));
         if (choices.isEmpty()) return;                          // das Nutzungsstueck am Ende

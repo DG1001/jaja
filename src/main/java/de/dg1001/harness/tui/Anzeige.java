@@ -26,6 +26,8 @@ public final class Anzeige implements Beobachter {
 
     private volatile boolean statusAn = false;
     private volatile int zug, maxZuege, token, tokenBudget;
+    /** Cache-Anteil des letzten Zugs in Prozent, -1 wenn der Server es nicht sagt. */
+    private volatile int cacheProzent = -1;
     private volatile String taetigkeit = "";
     private volatile boolean frei = false;
     private volatile long begonnen;
@@ -111,6 +113,7 @@ public final class Anzeige implements Beobachter {
         if (zug > 0) b.append("Zug ").append(zug).append('/').append(maxZuege).append(" · ");
         if (tokenBudget > 0)
             b.append(kurz(token)).append('/').append(kurz(tokenBudget)).append(" Token · ");
+        if (cacheProzent >= 0) b.append("Cache ").append(cacheProzent).append(" % · ");
         b.append(dauer(sek));
         if (!taetigkeit.isEmpty()) b.append(" · ").append(taetigkeit);
         if (frei) b.append(" · frei");
@@ -127,6 +130,8 @@ public final class Anzeige implements Beobachter {
         this.zug = nummer;
         this.token = a.usage().promptTokens();
         this.tokenBudget = budget;
+        this.cacheProzent = a.usage().cacheBekannt() && token > 0
+                ? (int) Math.round(100.0 * a.usage().cachedTokens() / token) : -1;
         this.taetigkeit = a.message().hatWerkzeugaufrufe() ? "arbeitet" : "antwortet";
         // Was das Modell zu diesem Zug sagt, ueber die Statuszeile hinaus.
         //

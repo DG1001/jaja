@@ -114,6 +114,31 @@ public final class ProbeMessages {
         pruefe("gelesen: TOOL_CALLS", r3.finishReason(), FinishReason.TOOL_CALLS);
         pruefe("gelesen: fehlende usage wird zu LEER", r3.usage().promptTokens(), 0);
 
+        // Cache-Treffer: drei Dialekte fuer dieselbe Zahl.
+        pruefe("Cache: ohne Angabe -1", r.usage().cachedTokens(), -1);
+        pruefe("Cache: OpenAI/vLLM prompt_tokens_details",
+               Messages.lies(Json.parse("""
+                   {"choices":[{"message":{"content":"x"}}],
+                    "usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101,
+                             "prompt_tokens_details":{"cached_tokens":64}}}""")).usage().cachedTokens(), 64);
+        pruefe("Cache: DeepSeek prompt_cache_hit_tokens",
+               Messages.lies(Json.parse("""
+                   {"choices":[{"message":{"content":"x"}}],
+                    "usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101,
+                             "prompt_cache_hit_tokens":90,"prompt_cache_miss_tokens":10}}""")).usage().cachedTokens(), 90);
+        pruefe("Cache: llama.cpp timings.cache_n neben usage",
+               Messages.lies(Json.parse("""
+                   {"choices":[{"message":{"content":"x"}}],
+                    "usage":{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101},
+                    "timings":{"cache_n":80,"prompt_n":20}}""")).usage().cachedTokens(), 80);
+        // Strom von llama.cpp: timings im letzten Inhaltsstueck, usage danach.
+        Stromsammler sam = new Stromsammler();
+        sam.nimm(Json.parse("{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"},"
+                + "\"finish_reason\":\"stop\"}],\"timings\":{\"cache_n\":70}}"));
+        sam.nimm(Json.parse("{\"choices\":[],\"usage\":{\"prompt_tokens\":100,"
+                + "\"completion_tokens\":1,\"total_tokens\":101}}"));
+        pruefe("Cache: Strom, timings vor usage", sam.antwort().usage().cachedTokens(), 70);
+
         pruefe("finish_reason 'length'",
                Messages.lies(Json.parse(
                    "{\"choices\":[{\"message\":{\"content\":\"x\"},\"finish_reason\":\"length\"}]}"))

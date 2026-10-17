@@ -107,8 +107,49 @@ public final class Messages {
         }
     }
 
-    public record Usage(int promptTokens, int completionTokens, int totalTokens) {
-        public static final Usage LEER = new Usage(0, 0, 0);
+    /**
+     * Nutzung laut Server. {@code cachedTokens} ist der Teil von
+     * {@code promptTokens}, den der Server aus seinem Praefix-Cache nahm, oder
+     * -1, wenn er es nicht sagt.
+     *
+     * <p>Bisher war die Trefferquote nur aus der Rechnung zurueckzurechnen
+     * (87,3 % in der gehosteten Serie). Damit sah man nie, WELCHER Zug den
+     * Cache verliert -- und genau das braucht, wer daran etwas verbessern will.
+     */
+    public record Usage(int promptTokens, int completionTokens, int totalTokens, int cachedTokens) {
+        public static final Usage LEER = new Usage(0, 0, 0, -1);
+
+        public Usage(int promptTokens, int completionTokens, int totalTokens) {
+            this(promptTokens, completionTokens, totalTokens, -1);
+        }
+
+        public boolean cacheBekannt() { return cachedTokens >= 0; }
+
+        Usage mitCache(int n) {
+            return new Usage(promptTokens, completionTokens, totalTokens, n);
+        }
+
+        /**
+         * Aus einer Antwort oder einem Stromstueck; null, wenn keine Nutzung
+         * darin steht. Drei Dialekte fuer dieselbe Zahl:
+         * OpenAI und vLLM {@code usage.prompt_tokens_details.cached_tokens},
+         * DeepSeek {@code usage.prompt_cache_hit_tokens}, llama.cpp
+         * {@code timings.cache_n} neben der Nutzung statt darin.
+         */
+        static Usage aus(Object wurzel) {
+            Object u = Json.feld(wurzel, "usage");
+            if (!(u instanceof java.util.Map)) return null;
+            int cache = Json.num(Json.feld(Json.feld(u, "prompt_tokens_details"), "cached_tokens"), -1);
+            if (cache < 0) cache = Json.num(Json.feld(u, "prompt_cache_hit_tokens"), -1);
+            if (cache < 0) cache = cacheAusTimings(wurzel);
+            return new Usage(Json.num(Json.feld(u, "prompt_tokens"), 0),
+                             Json.num(Json.feld(u, "completion_tokens"), 0),
+                             Json.num(Json.feld(u, "total_tokens"), 0), cache);
+        }
+
+        static int cacheAusTimings(Object wurzel) {
+            return Json.num(Json.feld(Json.feld(wurzel, "timings"), "cache_n"), -1);
+        }
     }
 
     public record ChatResponse(AssistantMessage message,
@@ -274,11 +315,8 @@ public final class Messages {
 
         FinishReason grund = FinishReason.von(Json.str(Json.feld(c0, "finish_reason")));
 
-        Object u = Json.feld(wurzel, "usage");
-        Usage nutzung = (u == null) ? Usage.LEER : new Usage(
-                Json.num(Json.feld(u, "prompt_tokens"), 0),
-                Json.num(Json.feld(u, "completion_tokens"), 0),
-                Json.num(Json.feld(u, "total_tokens"), 0));
+        Usage nutzung = Usage.aus(wurzel);
+        if (nutzung == null) nutzung = Usage.LEER;
 
         return new ChatResponse(
                 new AssistantMessage(inhalt, denken, aufrufe), grund, nutzung);
