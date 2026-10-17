@@ -226,8 +226,12 @@ A real boundary did not need a container after all. **`--sandkasten`** runs
 `bash` under `sandbox-exec` on macOS or `bwrap` on Linux, and confines
 *writing* to the workspace, the temp directories and the usual package caches
 (`~/.m2`, `~/.npm`, `~/.cache`, …). Reading and the network stay open, for the
-same reasons as above. If the tool is missing, jaja refuses to start rather
-than run unconfined. (Tested on macOS; the `bwrap` path has not run.)
+same reasons as above. If the tool is missing, or present but not allowed to
+work, jaja refuses to start rather than run unconfined. The second case is real:
+Ubuntu 24.04 and later deny unprivileged user namespaces to programs without an
+AppArmor profile, and `bwrap` ships without one. A trial run at start-up says so
+(`setting up uid map: Permission denied`) instead of failing at the first
+`bash` call. (Tested on macOS; on Linux only that refusal has run so far.)
 
 Servers and other long-running commands take **`hintergrund: true`**: output
 goes to `.harness/hintergrund/auftrag-N.log`, the call returns after three

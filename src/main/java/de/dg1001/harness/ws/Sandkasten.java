@@ -27,8 +27,8 @@ import java.util.List;
  * {@code ~/.cache}, ...). Ohne die scheitert jeder Build, der etwas
  * herunterlaedt -- und ein Harness, der Builds bricht, wird abgeschaltet.
  *
- * <p>Ist das Werkzeug nicht da, wird nicht stillschweigend ohne Sandkasten
- * gelaufen: {@link #fuerDiesesSystem} wirft. Wer {@code --sandkasten} sagt,
+ * <p>Ist das Werkzeug nicht da oder darf es nicht, wird nicht stillschweigend
+ * ohne Sandkasten gelaufen: {@link #fuerDiesesSystem} wirft. Wer {@code --sandkasten} sagt,
  * verlaesst sich darauf.
  */
 public final class Sandkasten {
@@ -57,6 +57,7 @@ public final class Sandkasten {
         if (!mac && !Projekt.imPfad("bwrap"))
             throw new IOException("--sandkasten: bwrap (bubblewrap) nicht gefunden -- "
                     + "z. B. apt install bubblewrap");
+        if (!mac) bwrapProbelauf();
 
         List<Path> schreibbar = new ArrayList<>();
         schreibbar.add(wurzel);
@@ -103,6 +104,37 @@ public final class Sandkasten {
     public List<Path> schreibbar() { return schreibbar; }
 
     // ----------------------------------------------------------- Hilfen
+
+    /**
+     * bwrap kann da sein und trotzdem nicht duerfen: Ubuntu ab 24.04 sperrt
+     * unprivilegierte User-Namespaces fuer Programme ohne eigenes
+     * AppArmor-Profil ({@code kernel.apparmor_restrict_unprivileged_userns=1}).
+     * Dann scheitert jeder bash-Aufruf mit "setting up uid map: Permission
+     * denied" -- erst mitten in der Sitzung. Ein Probelauf vorab sagt es beim
+     * Start, solange der Nutzer noch entscheiden kann.
+     */
+    private static void bwrapProbelauf() throws IOException {
+        Process p = new ProcessBuilder("bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "true")
+                .redirectErrorStream(true).start();
+        String aus;
+        try {
+            if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                throw new IOException("--sandkasten: bwrap-Probelauf haengt");
+            }
+            aus = new String(p.getInputStream().readAllBytes()).strip();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("--sandkasten: bwrap-Probelauf unterbrochen");
+        }
+        if (p.exitValue() == 0) return;
+        String grund = aus.isEmpty() ? "Rueckgabewert " + p.exitValue() : aus.lines().findFirst().orElse(aus);
+        String hinweis = grund.contains("uid map")
+                ? " -- vermutlich sperrt AppArmor User-Namespaces"
+                  + " (kernel.apparmor_restrict_unprivileged_userns); bwrap braucht ein eigenes Profil"
+                : "";
+        throw new IOException("--sandkasten: bwrap darf hier nicht: " + grund + hinweis);
+    }
 
     /** Echter Pfad, falls vorhanden -- /tmp ist auf macOS ein Verweis nach /private/tmp. */
     private static void echt(Path p, List<Path> l) {
