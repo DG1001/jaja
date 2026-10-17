@@ -57,6 +57,13 @@ public final class Versuche {
     /** Werden weder kopiert noch zurueckgespielt. */
     static final Set<String> AUSGELASSEN = Set.of(".harness", ".git");
 
+    /**
+     * Was erst der Testlauf im Sieger erzeugt, in jeder Tiefe. Ohne das spielte
+     * ein Python-Projekt seinen {@code __pycache__} mit zurueck -- unter Linux
+     * aufgefallen, sobald die Pruefung dort ueberhaupt lief.
+     */
+    static final Set<String> TESTSPUREN = Set.of("__pycache__", ".pytest_cache");
+
     private static final Pattern BESTANDEN = Pattern.compile("(\\d+) passed");
 
     public record Versuch(int nummer, Agent.Ergebnis ergebnis, long eingabe, long ausgabe,
@@ -203,6 +210,8 @@ public final class Versuche {
                 Path rel = wurzel.relativize(d);
                 if (rel.getNameCount() == 1 && (AUSGELASSEN.contains(rel.toString())
                         || VERLINKT.contains(rel.toString()))) return FileVisitResult.SKIP_SUBTREE;
+                if (d.getFileName() != null && TESTSPUREN.contains(d.getFileName().toString()))
+                    return FileVisitResult.SKIP_SUBTREE;
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path f, BasicFileAttributes a) {
